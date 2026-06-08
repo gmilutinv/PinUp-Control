@@ -154,6 +154,29 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
     </div>
     <button class="btn-login" onclick="login()">Ingresar</button>
     <div id="login-error">Email o contraseña incorrectos</div>
+    <div style="text-align:center;margin-top:16px;border-top:1px solid #eee;padding-top:16px">
+      <p style="font-size:12px;color:#888;margin-bottom:8px">¿No tenés acceso?</p>
+      <button onclick="mostrarSolicitud()" style="background:none;border:1px solid var(--border);color:var(--dark);padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;width:100%">Solicitar acceso</button>
+    </div>
+  </div>
+
+  <!-- SOLICITUD FORM -->
+  <div id="solicitud-card" style="display:none;background:white;border-radius:16px;padding:32px;width:100%;max-width:380px;border-top:5px solid var(--red);margin-top:16px">
+    <div style="font-size:18px;font-weight:700;margin-bottom:4px">Solicitar acceso</div>
+    <div style="font-size:12px;color:#888;margin-bottom:20px">Completá tus datos y te contactaremos</div>
+    <div class="login-field">
+      <label>Nombre completo</label>
+      <input type="text" id="s-nombre" placeholder="Tu nombre">
+    </div>
+    <div class="login-field">
+      <label>Email</label>
+      <input type="email" id="s-email" placeholder="tu@email.com">
+    </div>
+    <button class="btn-login" onclick="enviarSolicitud()">Enviar solicitud</button>
+    <div id="solicitud-msg" style="font-size:12px;text-align:center;margin-top:8px;display:none"></div>
+    <div style="text-align:center;margin-top:12px">
+      <button onclick="mostrarLogin()" style="background:none;border:none;color:#888;font-size:12px;cursor:pointer">← Volver al login</button>
+    </div>
   </div>
 </div>
 
@@ -683,14 +706,66 @@ function renderResumen(){
       </table></div>`;
 }
 
+function mostrarSolicitud(){
+  document.getElementById('solicitud-card').style.display='block';
+  document.querySelector('.login-card').style.display='none';
+}
+
+function mostrarLogin(){
+  document.getElementById('solicitud-card').style.display='none';
+  document.querySelector('.login-card').style.display='block';
+}
+
+async function enviarSolicitud(){
+  const nombre=document.getElementById('s-nombre').value.trim();
+  const email=document.getElementById('s-email').value.trim();
+  const msg=document.getElementById('solicitud-msg');
+  if(!nombre||!email){msg.style.display='block';msg.style.color='var(--red)';msg.textContent='Completá todos los campos.';return;}
+  try{
+    const res=await fetch(`${SUPA_URL}/rest/v1/solicitudes`,{
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({nombre,email})
+    });
+    if(res.ok){
+      // Send notification email via Supabase
+      await fetch(`${SUPA_URL}/rest/v1/rpc/notificar_solicitud`,{
+        method:'POST',
+        headers:{'apikey':SUPA_KEY,'Content-Type':'application/json'},
+        body:JSON.stringify({p_nombre:nombre,p_email:email})
+      }).catch(()=>{});
+      msg.style.display='block';msg.style.color='var(--green)';
+      msg.textContent='✓ Solicitud enviada. Te contactaremos pronto.';
+      document.getElementById('s-nombre').value='';
+      document.getElementById('s-email').value='';
+    }else{throw new Error();}
+  }catch(e){msg.style.display='block';msg.style.color='var(--red)';msg.textContent='Error al enviar. Intentá de nuevo.';}
+}
+
 async function renderAdmin(){
   if(currentProfile.rol!=='admin'){document.getElementById('tab-admin').innerHTML='<div class="empty">Sin acceso.</div>';return;}
-  let users=[];
+  let users=[], solicitudes=[];
   try{users=await supa('/rest/v1/profiles?select=*');}catch(e){}
+  try{solicitudes=await supa('/rest/v1/solicitudes?select=*&order=created_at.desc');}catch(e){}
+  
+  const pendientes=solicitudes.filter(s=>s.estado==='pendiente');
+  
   document.getElementById('tab-admin').innerHTML=`
+    ${pendientes.length>0?`
+    <div class="card" style="border-top:3px solid var(--red)">
+      <h2>🔔 Solicitudes pendientes (${pendientes.length})</h2>
+      ${pendientes.map(s=>`<div class="admin-user-card">
+        <div class="info">
+          <div class="nombre">${s.nombre}</div>
+          <div class="email">${s.email} · ${s.created_at?.substring(0,10)}</div>
+        </div>
+        <button class="btn-sm btn-success" onclick="aprobarSolicitud(${s.id},'${s.email}','${s.nombre}')">✓ Aprobar</button>
+        <button class="btn-sm btn-danger" onclick="rechazarSolicitud(${s.id})">Rechazar</button>
+      </div>`).join('')}
+    </div>`:''}
     <div class="card">
-      <h2>Gestión de usuarios</h2>
-      <p style="font-size:12px;color:#888;margin-bottom:14px">Para agregar usuarios, usá el panel de Supabase → Authentication → Users → Invite user. Acá podés cambiar roles.</p>
+      <h2>Usuarios activos</h2>
+      <p style="font-size:12px;color:#888;margin-bottom:14px">Podés cambiar el rol de cada usuario acá.</p>
       ${users.map(u=>`<div class="admin-user-card">
         <div class="info"><div class="nombre">${u.nombre||'Sin nombre'}</div></div>
         <span class="rol-badge rol-${u.rol}">${u.rol}</span>
@@ -702,6 +777,21 @@ async function renderAdmin(){
         </select>
       </div>`).join('')}
     </div>`;
+}
+
+async function aprobarSolicitud(id, email, nombre){
+  // Invite user via Supabase
+  try{
+    await supa('/auth/v1/admin/users','POST',{email,password:Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2).toUpperCase()+'!1',email_confirm:true,user_metadata:{nombre}});
+    await supa(`/rest/v1/solicitudes?id=eq.${id}`,'PATCH',{estado:'aprobado'});
+    alert(`✓ Usuario ${email} aprobado. Supabase le enviará el email de confirmación.`);
+    renderAdmin();
+  }catch(e){alert('Error al aprobar. Revisá el panel de Supabase.');}
+}
+
+async function rechazarSolicitud(id){
+  await supa(`/rest/v1/solicitudes?id=eq.${id}`,'PATCH',{estado:'rechazado'});
+  renderAdmin();
 }
 
 async function cambiarRol(uid,rol){
