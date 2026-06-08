@@ -722,23 +722,30 @@ async function enviarSolicitud(){
   const msg=document.getElementById('solicitud-msg');
   if(!nombre||!email){msg.style.display='block';msg.style.color='var(--red)';msg.textContent='Completá todos los campos.';return;}
   try{
+    // Save to Supabase
     const res=await fetch(`${SUPA_URL}/rest/v1/solicitudes`,{
       method:'POST',
       headers:{'apikey':SUPA_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
       body:JSON.stringify({nombre,email})
     });
-    if(res.ok){
-      // Send notification email via Supabase
-      await fetch(`${SUPA_URL}/rest/v1/rpc/notificar_solicitud`,{
-        method:'POST',
-        headers:{'apikey':SUPA_KEY,'Content-Type':'application/json'},
-        body:JSON.stringify({p_nombre:nombre,p_email:email})
-      }).catch(()=>{});
-      msg.style.display='block';msg.style.color='var(--green)';
-      msg.textContent='✓ Solicitud enviada. Te contactaremos pronto.';
-      document.getElementById('s-nombre').value='';
-      document.getElementById('s-email').value='';
-    }else{throw new Error();}
+    if(!res.ok)throw new Error();
+    
+    // Send email via Resend directly
+    await fetch('https://api.resend.com/emails',{
+      method:'POST',
+      headers:{'Authorization':'Bearer re_7qaxmdTE_6MiHJZC9nBZLxa2BKZuGy2nf','Content-Type':'application/json'},
+      body:JSON.stringify({
+        from:'onboarding@resend.dev',
+        to:'gmilutinv@gmail.com',
+        subject:'Nueva solicitud de acceso - Pin Up Clean',
+        html:`<h2>Nueva solicitud de acceso</h2><p><strong>${nombre}</strong> (${email}) solicitó acceso a pinupsys.com.</p><p>Entrá al panel admin para aprobar o rechazar.</p>`
+      })
+    });
+    
+    msg.style.display='block';msg.style.color='var(--green)';
+    msg.textContent='✓ Solicitud enviada. Te contactaremos pronto.';
+    document.getElementById('s-nombre').value='';
+    document.getElementById('s-email').value='';
   }catch(e){msg.style.display='block';msg.style.color='var(--red)';msg.textContent='Error al enviar. Intentá de nuevo.';}
 }
 
