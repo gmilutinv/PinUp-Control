@@ -33,6 +33,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .btn-login:hover{background:var(--red)}
 #login-error{color:var(--red);font-size:12px;text-align:center;margin-top:8px;display:none}
 
+/* INVITE / SET PASSWORD */
+#invite-screen{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;background:var(--dark)}
+.invite-card{background:white;border-radius:16px;padding:32px;width:100%;max-width:380px;border-top:5px solid var(--red)}
+.invite-title{font-size:18px;font-weight:700;margin-bottom:4px;text-align:center}
+.invite-sub{font-size:12px;color:#888;text-align:center;margin-bottom:24px}
+#invite-error{color:var(--red);font-size:12px;text-align:center;margin-top:8px;display:none}
+#invite-success{color:var(--green);font-size:13px;text-align:center;margin-top:10px;display:none}
+.pass-strength{height:4px;border-radius:2px;margin-top:4px;transition:all .3s;background:var(--border)}
+.pass-strength.weak{background:#ef5350;width:33%}
+.pass-strength.medium{background:#FFA726;width:66%}
+.pass-strength.strong{background:var(--green);width:100%}
+
 /* MAIN APP */
 #app{display:none}
 header{background:var(--dark);color:white;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid var(--red);position:sticky;top:0;z-index:100}
@@ -180,6 +192,27 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
   </div>
 </div>
 
+<!-- INVITE / SET PASSWORD -->
+<div id="invite-screen">
+  <div class="invite-card">
+    <img src="" id="invite-logo" style="width:160px;margin:0 auto 12px;display:block">
+    <div class="invite-title">¡Bienvenido/a a Pin Up Clean!</div>
+    <div class="invite-sub" id="invite-sub">Creá tu contraseña para activar tu cuenta</div>
+    <div class="login-field">
+      <label>Nueva contraseña</label>
+      <input type="password" id="inv-pass" placeholder="Mínimo 8 caracteres" oninput="checkPassStrength(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('inv-pass2').focus()">
+      <div class="pass-strength" id="pass-strength-bar"></div>
+    </div>
+    <div class="login-field">
+      <label>Confirmá la contraseña</label>
+      <input type="password" id="inv-pass2" placeholder="Repetí la contraseña" onkeydown="if(event.key==='Enter')setInvitePassword()">
+    </div>
+    <button class="btn-login" id="invite-btn" onclick="setInvitePassword()">Activar cuenta</button>
+    <div id="invite-error">Las contraseñas no coinciden o son muy cortas (mínimo 8 caracteres).</div>
+    <div id="invite-success">✓ Contraseña creada. Ingresando...</div>
+  </div>
+</div>
+
 <!-- APP -->
 <div id="app">
   <header>
@@ -271,6 +304,97 @@ const PRECIOS_BULTO = {
 };
 
 const COLORS=['#D32F2F','#1565C0','#2E7D32','#E65100','#6A1B9A','#00695C','#F57F17','#37474F','#AD1457','#558B2F'];
+
+// ── INVITE TOKEN DETECTION ──────────────────────────────────────────────────
+(function detectInviteToken(){
+  const hash = window.location.hash.substring(1);
+  if(!hash) return;
+  const params = {};
+  hash.split('&').forEach(part => {
+    const [k, v] = part.split('=');
+    params[decodeURIComponent(k)] = decodeURIComponent(v || '');
+  });
+  const type = params['type'];
+  if(type === 'invite' || type === 'recovery') {
+    const accessToken = params['access_token'];
+    if(!accessToken) return;
+    // Store token for use when user submits the form
+    window._inviteToken = accessToken;
+    window._inviteType = type;
+    // Show invite screen, hide login
+    document.getElementById('login-screen').style.display = 'none';
+    const screen = document.getElementById('invite-screen');
+    screen.style.display = 'flex';
+    // Copy logo src from login screen
+    const loginLogo = document.querySelector('.login-card img');
+    if(loginLogo) document.getElementById('invite-logo').src = loginLogo.src;
+    if(type === 'recovery') {
+      document.getElementById('invite-sub').textContent = 'Ingresá tu nueva contraseña';
+      document.querySelector('.invite-title').textContent = 'Restablecer contraseña';
+    }
+    // Clean the URL hash without reload
+    history.replaceState(null, '', window.location.pathname);
+  }
+})();
+
+function checkPassStrength(val) {
+  const bar = document.getElementById('pass-strength-bar');
+  if(val.length === 0){ bar.className = 'pass-strength'; return; }
+  const hasUpper = /[A-Z]/.test(val);
+  const hasNum   = /[0-9]/.test(val);
+  const hasSpec  = /[^A-Za-z0-9]/.test(val);
+  const score    = (val.length >= 10 ? 1 : 0) + (hasUpper ? 1 : 0) + (hasNum ? 1 : 0) + (hasSpec ? 1 : 0);
+  bar.className = 'pass-strength ' + (score <= 1 ? 'weak' : score <= 2 ? 'medium' : 'strong');
+}
+
+async function setInvitePassword() {
+  const pass  = document.getElementById('inv-pass').value;
+  const pass2 = document.getElementById('inv-pass2').value;
+  const errEl = document.getElementById('invite-error');
+  const okEl  = document.getElementById('invite-success');
+  const btn   = document.getElementById('invite-btn');
+  errEl.style.display = 'none';
+  okEl.style.display  = 'none';
+  if(pass.length < 8 || pass !== pass2) {
+    errEl.style.display = 'block';
+    return;
+  }
+  btn.disabled   = true;
+  btn.textContent = 'Procesando...';
+  try {
+    // Use the invite access_token to authenticate the request
+    const token = window._inviteToken;
+    const r = await fetch(`${SUPA_URL}/auth/v1/user`, {
+      method: 'PUT',
+      headers: {
+        'apikey': SUPA_KEY,
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token
+      },
+      body: JSON.stringify({ password: pass })
+    });
+    if(!r.ok) {
+      const err = await r.json();
+      throw new Error(err.message || 'Error al guardar');
+    }
+    const data = await r.json();
+    okEl.style.display = 'block';
+    // Auto-login: store token and user, then go to app
+    supaToken   = token;
+    currentUser = data;
+    setTimeout(async () => {
+      await loadProfile();
+      document.getElementById('invite-screen').style.display = 'none';
+      showApp();
+    }, 1200);
+  } catch(e) {
+    errEl.textContent   = 'Error: ' + e.message;
+    errEl.style.display = 'block';
+    btn.disabled        = false;
+    btn.textContent     = 'Activar cuenta';
+  }
+}
+// ────────────────────────────────────────────────────────────────────────────
 const fmt=n=>'$'+Math.round(n).toLocaleString('es-AR');
 const getProd=pid=>PRODS.find(x=>x.id===pid);
 const getPrecioBulto=(cliente,pid)=>{const t=PRECIOS_BULTO[cliente];return t?t[pid]||0:0;};
