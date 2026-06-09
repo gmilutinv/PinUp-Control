@@ -410,15 +410,18 @@ const getProd=pid=>PRODS.find(x=>x.id===pid);
 const getPrecioBulto=(cliente,pid)=>{const t=PRECIOS_BULTO[cliente];return t?t[pid]||0:0;};
 const getPrecioUnidad=(cliente,pid)=>{const pp=getProd(pid);return pp?getPrecioBulto(cliente,pid)/pp.uxb:0;};
 
-function totalMonto(p){
+function totalMontoNeto(p){
   return (p.productos||[]).reduce((a,x)=>{
     if(x.bonificado)return a;
     const pp=getProd(x.pid);
     const uxb=pp?pp.uxb:0;
-    // use saved price if available, otherwise fall back to hardcoded
     const precio=x.precio||getPrecioUnidad(p.cliente,x.pid);
     return a+x.bultos*uxb*precio;
   },0);
+}
+function totalMonto(p){
+  const neto=totalMontoNeto(p);
+  return p.con_iva ? neto*1.21 : neto;
 }
 function totalBultos(p){return (p.productos||[]).reduce((a,x)=>a+x.bultos,0);}
 
@@ -692,7 +695,7 @@ function renderPedidos(){
   const list=document.getElementById('tab-pedidos');
   if(!pedidos.length){list.innerHTML='<div class="empty">No hay pedidos.</div>';return;}
   const canEdit=['admin','comercial'].includes(currentProfile.rol);
-  list.innerHTML=pedidos.map(p=>{
+  list.innerHTML=pedidos.map((p,idx)=>{
     const tb=totalBultos(p),tm=totalMonto(p);
     const bc=p.estado==='entregado'?'badge-entregado':p.estado==='produccion'?'badge-produccion':'badge-pendiente';
     const bt=p.estado==='entregado'?'Entregado':p.estado==='produccion'?'En producción':'Pendiente';
@@ -712,7 +715,7 @@ function renderPedidos(){
       <button class="btn-sm btn-danger" onclick="eliminarPedido(${p.id})">Eliminar</button>`:'';
     return`<div class="pedido-card">
       <div class="pedido-header" onclick="tog(${p.id})">
-        <div class="pedido-num">P${p.id}</div>
+        <div class="pedido-num">P${idx+1}</div>
         <div class="pedido-info"><div class="cliente">${p.cliente}</div><div class="fecha">${p.fecha} · ${tb} bultos${p.provincia ? ' · <span style="color:var(--blue);font-weight:600">'+p.provincia+'</span>' : ''}</div></div>
         <span class="badge ${bc}">${bt}</span>
         <span class="badge ${p.cobro==='pagado'?'badge-pagado':'badge-nopagado'}" style="margin-left:4px">${p.cobro==='pagado'?'Cobrado':'Sin cobrar'}</span>
@@ -726,9 +729,9 @@ function renderPedidos(){
             <input type="checkbox" id="iva-${p.id}" ${p.con_iva?'checked':''} onchange="toggleIva(${p.id},${tm})">
             <label for="iva-${p.id}" style="cursor:pointer;font-weight:500;font-size:12px">Incluir IVA 21%</label>
           </div>
-          <div style="font-size:12px;color:var(--mid)">Subtotal s/IVA: <strong>${fmt(tm)}</strong></div>
-          <div id="iva-row-${p.id}" style="font-size:12px;color:var(--mid);display:${p.con_iva?'block':'none'}">IVA 21%: <strong>${fmt(tm*0.21)}</strong></div>
-          <div style="font-family:Georgia,serif;font-size:20px;color:var(--green)">TOTAL: <span id="total-final-${p.id}">${p.con_iva?fmt(tm*1.21):fmt(tm)}</span></div>
+          <div style="font-size:12px;color:var(--mid)">Subtotal s/IVA: <strong>${fmt(totalMontoNeto(p))}</strong></div>
+          <div id="iva-row-${p.id}" style="font-size:12px;color:var(--mid);display:${p.con_iva?'block':'none'}">IVA 21%: <strong>${fmt(totalMontoNeto(p)*0.21)}</strong></div>
+          <div style="font-family:Georgia,serif;font-size:20px;color:var(--green)">TOTAL: <span id="total-final-${p.id}">${fmt(tm)}</span></div>
         </div>
         ${p.notas?`<p style="font-size:11px;color:#888;margin-top:6px">📝 ${p.notas}</p>`:''}
         <div class="pedido-actions">
@@ -831,7 +834,7 @@ function renderCobros(){
   document.getElementById('tab-cobros').innerHTML=`<div class="card"><h2>Estado de cobros</h2>${
     sorted.map(p=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap">
       <div style="flex:1;min-width:150px">
-        <div style="font-weight:600;font-size:13px">P${p.id} — ${p.cliente}</div>
+        <div style="font-weight:600;font-size:13px">P${pedidos.indexOf(p)+1} — ${p.cliente}</div>
         <div style="font-size:11px;color:#888">${p.fecha}${p.fecha_cobro?' · Cobro: '+p.fecha_cobro:''}${p.notas?' · '+p.notas:''}</div>
       </div>
       <strong style="font-family:Georgia,serif;font-size:16px;color:var(--green)">${fmt(totalMonto(p))}</strong>
