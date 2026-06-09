@@ -412,8 +412,11 @@ const getPrecioUnidad=(cliente,pid)=>{const pp=getProd(pid);return pp?getPrecioB
 function totalMonto(p){
   return (p.productos||[]).reduce((a,x)=>{
     if(x.bonificado)return a;
-    if(x.precio){const pp=getProd(x.pid);return a+x.bultos*(pp?pp.uxb:0)*x.precio;}
-    return a+x.bultos*getPrecioBulto(p.cliente,x.pid);
+    const pp=getProd(x.pid);
+    const uxb=pp?pp.uxb:0;
+    // use saved price if available, otherwise fall back to hardcoded
+    const precio=x.precio||getPrecioUnidad(p.cliente,x.pid);
+    return a+x.bultos*uxb*precio;
   },0);
 }
 function totalBultos(p){return (p.productos||[]).reduce((a,x)=>a+x.bultos,0);}
@@ -911,7 +914,7 @@ function renderStats(){
   if(charts.provBultos)charts.provBultos.destroy();
   charts.provBultos=new Chart(document.getElementById('chart-prov-bultos'),{type:'bar',data:{labels:provKeys,datasets:[{label:'Bultos',data:provKeys.map(k=>provBultosMap[k]),backgroundColor:COLORS,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#f0e8dc'}},x:{grid:{display:false}}}}});
   if(charts.provMonto)charts.provMonto.destroy();
-  charts.provMonto=new Chart(document.getElementById('chart-prov-monto'),{type:'bar',data:{labels:provKeys,datasets:[{label:'Monto $',data:provKeys.map(k=>provMontoMap[k]),backgroundColor:COLORS.map(c=>c+'CC'),borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt(ctx.raw)}}},scales:{y:{beginAtZero:true,grid:{color:'#f0e8dc'},ticks:{callback:v=>'$'+Math.round(v/1000)+'k'}},x:{grid:{display:false}}}}});
+  charts.provMonto=new Chart(document.getElementById('chart-prov-monto'),{type:'bar',data:{labels:provKeys,datasets:[{label:'Monto $',data:provKeys.map(k=>provMontoMap[k]),backgroundColor:COLORS.map(c=>c+'CC'),borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt(ctx.raw)}}},scales:{y:{beginAtZero:true,grid:{color:'#f0e8dc'},ticks:{callback:v=>fmt(v)}},x:{grid:{display:false}}}}});
 }
 
 function renderResumen(){
