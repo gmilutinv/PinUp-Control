@@ -1163,12 +1163,14 @@ function renderProyeccion(){
       fechaEsperada = calcFechaCobro(p.fecha, diasNum);
     }
     if(!fechaEsperada) return; // sin condición de pago configurada
-    const base=new Date(fechaEsperada);
-    const mes=base.toISOString().substring(0,7); // YYYY-MM
+    // Parse date as local time (not UTC) to avoid Safari timezone shift
+    const [fy,fm,fd]=fechaEsperada.split('-').map(Number);
+    const base=new Date(fy,fm-1,fd);
+    const mes=`${fy}-${String(fm).padStart(2,'0')}`; // YYYY-MM
     if(!mesesMap[mes]) mesesMap[mes]={monto:0,pedidos:[]};
     const monto=totalMonto(p);
     mesesMap[mes].monto+=monto;
-    mesesMap[mes].pedidos.push({...p,monto,fechaEsperada:base.toISOString().substring(0,10)});
+    mesesMap[mes].pedidos.push({...p,monto,fechaEsperada});
     pendientes.push(p);
   });
 
