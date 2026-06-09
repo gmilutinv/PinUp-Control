@@ -1148,13 +1148,14 @@ function renderProyeccion(){
 
   pedidos.forEach(p=>{
     if(p.cobro==='pagado') return;
-    if(p.dias_cobro===null && !p.fecha_cobro) return; // sin condición de pago
-    // Use fecha_cobro if stored, otherwise calculate from fecha + dias_cobro
-    let fechaEsperada=p.fecha_cobro;
-    if(!fechaEsperada && p.dias_cobro!==null && p.fecha){
-      fechaEsperada=calcFechaCobro(p.fecha, p.dias_cobro);
+    // dias_cobro puede venir como undefined, null o 0 de Supabase
+    const diasNum = (p.dias_cobro !== undefined && p.dias_cobro !== null) ? parseInt(p.dias_cobro) : null;
+    // Calcular fecha esperada de cobro
+    let fechaEsperada = p.fecha_cobro || null;
+    if(!fechaEsperada && diasNum !== null && !isNaN(diasNum) && p.fecha){
+      fechaEsperada = calcFechaCobro(p.fecha, diasNum);
     }
-    if(!fechaEsperada) return;
+    if(!fechaEsperada) return; // sin condición de pago configurada
     const base=new Date(fechaEsperada);
     const mes=base.toISOString().substring(0,7); // YYYY-MM
     if(!mesesMap[mes]) mesesMap[mes]={monto:0,pedidos:[]};
