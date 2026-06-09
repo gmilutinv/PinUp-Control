@@ -823,7 +823,11 @@ async function guardarDiasCobro(id, dias){
   p.dias_cobro=diasNum;
   p.fecha_cobro=fecha_cobro;
   await supa(`/rest/v1/pedidos?id=eq.${id}`,'PATCH',{dias_cobro:diasNum, fecha_cobro});
-  renderProyeccion && showTab('proyeccion');
+  // Show feedback
+  const ok=document.getElementById('dias-cobro-ok-'+id);
+  if(ok){ok.style.display='inline';setTimeout(()=>{ok.style.display='none';},2000);}
+  // Re-render pedidos to show updated vence date
+  renderPedidos();
 }
 
 async function guardarCampo(id,campo,valor){
@@ -1173,6 +1177,11 @@ function renderProyeccion(){
   const mesLabels={'01':'Enero','02':'Febrero','03':'Marzo','04':'Abril','05':'Mayo','06':'Junio',
     '07':'Julio','08':'Agosto','09':'Septiembre','10':'Octubre','11':'Noviembre','12':'Diciembre'};
   const getMesLabel=m=>{const [y,mo]=m.split('-');return `${mesLabels[mo]} ${y}`;};
+
+  if(!meses.length){
+    document.getElementById('tab-proyeccion').innerHTML='<div class="empty" style="padding:40px;text-align:center;color:#888">No hay pedidos con días de pago configurados.<br><br>Abrí cada pedido, ingresá los días de pago y tocá ✓ para guardar.</div>';
+    return;
+  }
 
   document.getElementById('tab-proyeccion').innerHTML=`
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
