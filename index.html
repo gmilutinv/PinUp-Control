@@ -788,15 +788,20 @@ async function renderAdmin(){
 
 async function aprobarSolicitud(id, email, nombre){
   try{
-    await supa('/rest/v1/rpc/crear_usuario_aprobado','POST',{p_email:email,p_nombre:nombre});
+    const res = await fetch(`${SUPA_URL}/functions/v1/invitar-usuario`, {
+      method:'POST',
+      headers:{
+        'Authorization':'Bearer '+supaToken,
+        'Content-Type':'application/json'
+      },
+      body:JSON.stringify({email, nombre})
+    });
+    if(!res.ok) throw new Error();
     await supa(`/rest/v1/solicitudes?id=eq.${id}`,'PATCH',{estado:'aprobado'});
-    alert(`✓ Usuario ${email} aprobado. Recibirá un email para crear su contraseña.`);
+    alert(`✓ Invitación enviada a ${email}. Recibirá un email para crear su contraseña.`);
     renderAdmin();
   }catch(e){
-    // Fallback: just mark as approved and create from Supabase dashboard
-    await supa(`/rest/v1/solicitudes?id=eq.${id}`,'PATCH',{estado:'aprobado'});
-    alert(`Usuario marcado como aprobado. Creá el usuario manualmente en Supabase → Authentication → Users con el email: ${email}`);
-    renderAdmin();
+    alert(`Error al enviar invitación a ${email}. Intentá de nuevo.`);
   }
 }
 
