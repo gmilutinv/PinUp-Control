@@ -554,10 +554,10 @@ function renderNuevo(){
         </div>
       </div>
       <div class="form-row">
-        <div class="field"><label>Cobro</label>
-          <select id="f-cobro"><option value="nopagado">No cobrado</option><option value="pagado">Cobrado</option></select>
+        <div class="field"><label>Días de pago</label>
+          <input type="number" id="f-dias-cobro" placeholder="Ej: 30" min="0" max="365" style="width:100px">
+          <span style="font-size:11px;color:#888;margin-top:4px;display:block">Días desde la fecha del pedido</span>
         </div>
-        <div class="field"><label>Fecha cobro</label><input type="date" id="f-fechacobro"></div>
         <div class="field"><label>Notas</label><input type="text" id="f-notas" placeholder="Ej: 60 días factura"></div>
       </div>
       <div class="form-row">
@@ -681,8 +681,9 @@ async function guardar(){
       cliente:cl,fecha:fe,
       provincia:document.getElementById('f-provincia').value||null,
       estado:document.getElementById('f-estado').value,
-      cobro:document.getElementById('f-cobro').value,
-      fecha_cobro:document.getElementById('f-fechacobro').value||null,
+      cobro:'nopagado',
+      dias_cobro:parseInt(document.getElementById('f-dias-cobro').value)||null,
+      fecha_cobro:calcFechaCobro(document.getElementById('f-fecha').value, parseInt(document.getElementById('f-dias-cobro').value)||null),
       notas:document.getElementById('f-notas').value,
       con_iva:document.getElementById('f-iva').checked,
       productos:prods,
@@ -737,7 +738,12 @@ function renderPedidos(){
           <div style="font-family:Georgia,serif;font-size:20px;color:var(--green)">TOTAL: <span id="total-final-${p.id}">${fmt(tm)}</span></div>
         </div>
         ${p.notas?`<p style="font-size:11px;color:#888;margin-top:6px">📝 ${p.notas}</p>`:''}
+        ${(p.dias_cobro!==null&&p.dias_cobro!==undefined)?`<p style="font-size:11px;color:var(--blue);margin-top:4px">⏱ ${p.dias_cobro} días · vence ${p.fecha_cobro||calcFechaCobro(p.fecha,p.dias_cobro)||'—'}</p>`:''}
         ${canEdit?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:11px;color:#666;font-weight:600;white-space:nowrap">Días pago</label>
+            <input type="number" id="dias-cobro-${p.id}" value="${p.dias_cobro||''}" placeholder="—" min="0" max="365" style="width:65px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;background:var(--cream)" onblur="guardarDiasCobro(${p.id},this.value)">
+          </div>
           <div style="display:flex;align-items:center;gap:6px">
             <label style="font-size:11px;color:#666;font-weight:600;white-space:nowrap">N° Factura</label>
             <input type="text" id="nro-fac-${p.id}" value="${p.nro_factura||''}" placeholder="—" style="width:110px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;background:var(--cream)" onblur="guardarCampo(${p.id},'nro_factura',this.value)">
@@ -800,6 +806,23 @@ async function toggleCobro(id){
   p.cobro=p.cobro==='pagado'?'nopagado':'pagado';
   await supa(`/rest/v1/pedidos?id=eq.${id}`,'PATCH',{cobro:p.cobro});
   renderPedidos();updateStats();
+
+function calcFechaCobro(fechaPedido, dias){
+  if(!fechaPedido || dias===null || isNaN(dias)) return null;
+  const d=new Date(fechaPedido);
+  d.setDate(d.getDate()+dias);
+  return d.toISOString().substring(0,10);
+}
+
+async function guardarDiasCobro(id, dias){
+  const p=pedidos.find(x=>x.id===id);if(!p)return;
+  const diasNum=parseInt(dias)||null;
+  const fecha_cobro=calcFechaCobro(p.fecha, diasNum);
+  p.dias_cobro=diasNum;
+  p.fecha_cobro=fecha_cobro;
+  await supa(`/rest/v1/pedidos?id=eq.${id}`,'PATCH',{dias_cobro:diasNum, fecha_cobro});
+  renderProyeccion && showTab('proyeccion');
+}
 
 async function guardarCampo(id,campo,valor){
   const p=pedidos.find(x=>x.id===id);if(!p)return;
@@ -1120,21 +1143,19 @@ async function cambiarRol(uid,rol){
 }
 
 function renderProyeccion(){
-  // Build month-by-month collection forecast based on dias_cobro
-  // cobro modes: '30dias','60dias','90dias','contado','anticipado'
-  const diasMap={'contado':0,'anticipado':-7,'30dias':30,'60dias':60,'90dias':90};
-
-  // Group uncollected pedidos by expected collection month
   const mesesMap={};
   const pendientes=[];
 
   pedidos.forEach(p=>{
-    if(p.cobro==='pagado') return; // already collected
-    const fecha=p.fecha_cobro||p.fecha;
-    if(!fecha) return;
-    const dias=diasMap[p.cobro]??30;
-    const base=new Date(fecha);
-    base.setDate(base.getDate()+dias);
+    if(p.cobro==='pagado') return;
+    if(p.dias_cobro===null && !p.fecha_cobro) return; // sin condición de pago
+    // Use fecha_cobro if stored, otherwise calculate from fecha + dias_cobro
+    let fechaEsperada=p.fecha_cobro;
+    if(!fechaEsperada && p.dias_cobro!==null && p.fecha){
+      fechaEsperada=calcFechaCobro(p.fecha, p.dias_cobro);
+    }
+    if(!fechaEsperada) return;
+    const base=new Date(fechaEsperada);
     const mes=base.toISOString().substring(0,7); // YYYY-MM
     if(!mesesMap[mes]) mesesMap[mes]={monto:0,pedidos:[]};
     const monto=totalMonto(p);
