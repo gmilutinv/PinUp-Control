@@ -855,6 +855,22 @@ function renderStats(){
   pedsFilt.forEach(p=>{const m=p.fecha?p.fecha.substring(0,7):'';if(m){if(!mesesMap[m])mesesMap[m]=0;mesesMap[m]+=totalBultos(p);}});
   const mKeys=Object.keys(mesesMap).sort();
 
+  // provincia maps (always from ALL pedidos, not filtered)
+  const provBultosMap={};
+  pedidos.forEach(p=>{const pv=p.provincia||'Sin provincia';if(!provBultosMap[pv])provBultosMap[pv]=0;provBultosMap[pv]+=totalBultos(p);});
+  const provMontoMap={};
+  pedidos.forEach(p=>{const pv=p.provincia||'Sin provincia';if(!provMontoMap[pv])provMontoMap[pv]=0;provMontoMap[pv]+=totalMonto(p);});
+  // provincia x cliente table (all pedidos)
+  const provCliMap={};
+  pedidos.forEach(p=>{
+    const pv=p.provincia||'Sin provincia';
+    if(!provCliMap[pv])provCliMap[pv]={};
+    if(!provCliMap[pv][p.cliente])provCliMap[pv][p.cliente]={bultos:0,monto:0};
+    provCliMap[pv][p.cliente].bultos+=totalBultos(p);
+    provCliMap[pv][p.cliente].monto+=totalMonto(p);
+  });
+  const provKeys=Object.keys(provBultosMap).sort((a,b)=>provBultosMap[b]-provBultosMap[a]);
+
   document.getElementById('tab-estadisticas').innerHTML=`
     <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#666">Filtrar por provincia:</label>
@@ -868,6 +884,19 @@ function renderStats(){
       <div class="chart-card"><h3>Ventas por cliente</h3><div class="chart-wrap"><canvas id="chart-clientes"></canvas></div></div>
     </div>
     <div class="chart-card" style="margin-bottom:16px"><h3>Bultos por mes</h3><div class="chart-wrap" style="height:200px"><canvas id="chart-meses"></canvas></div></div>
+    <div class="charts-grid">
+      <div class="chart-card"><h3>Bultos por provincia</h3><div class="chart-wrap"><canvas id="chart-prov-bultos"></canvas></div></div>
+      <div class="chart-card"><h3>Monto vendido por provincia</h3><div class="chart-wrap"><canvas id="chart-prov-monto"></canvas></div></div>
+    </div>
+    <div class="card" style="margin-bottom:16px"><h2>Clientes por provincia</h2>
+      <table class="stbl"><thead><tr><th>Provincia</th><th>Cliente</th><th>Bultos</th><th>Total $</th></tr></thead>
+      <tbody>${provKeys.map(pv=>Object.entries(provCliMap[pv]).sort((a,b)=>b[1].bultos-a[1].bultos).map(([ cli,v],i)=>`
+        <tr>
+          ${i===0?`<td rowspan="${Object.keys(provCliMap[pv]).length}" style="font-weight:700;color:var(--blue);vertical-align:top;padding-top:10px">${pv}</td>`:''}
+          <td>${cli}</td><td class="num big-num">${v.bultos}</td><td class="num">${fmt(v.monto)}</td>
+        </tr>`).join('')).join('')}
+      </tbody></table>
+    </div>
     <div class="card"><h2>Totales por producto</h2>
       <table class="stbl"><thead><tr><th>Producto</th><th>Pres.</th><th>Bultos</th><th>Unidades</th><th>Pedidos</th></tr></thead>
       <tbody>${sorted.map(([k,v])=>`<tr><td>${v.nombre}</td><td>${v.pres}</td><td class="num big-num">${v.bultos}</td><td class="num">${v.unids}</td><td class="num">${v.count}</td></tr>`).join('')}</tbody>
@@ -879,6 +908,10 @@ function renderStats(){
   charts.clientes=new Chart(document.getElementById('chart-clientes'),{type:'bar',data:{labels:Object.keys(cliMap),datasets:[{label:'Bultos',data:Object.values(cliMap),backgroundColor:COLORS,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#f0e8dc'}},x:{grid:{display:false}}}}});
   if(charts.meses)charts.meses.destroy();
   charts.meses=new Chart(document.getElementById('chart-meses'),{type:'line',data:{labels:mKeys,datasets:[{label:'Bultos',data:mKeys.map(k=>mesesMap[k]),borderColor:'#D32F2F',backgroundColor:'rgba(211,47,47,.1)',fill:true,tension:.3,pointRadius:4,pointBackgroundColor:'#D32F2F'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true},x:{grid:{display:false}}}}});
+  if(charts.provBultos)charts.provBultos.destroy();
+  charts.provBultos=new Chart(document.getElementById('chart-prov-bultos'),{type:'bar',data:{labels:provKeys,datasets:[{label:'Bultos',data:provKeys.map(k=>provBultosMap[k]),backgroundColor:COLORS,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#f0e8dc'}},x:{grid:{display:false}}}}});
+  if(charts.provMonto)charts.provMonto.destroy();
+  charts.provMonto=new Chart(document.getElementById('chart-prov-monto'),{type:'bar',data:{labels:provKeys,datasets:[{label:'Monto $',data:provKeys.map(k=>provMontoMap[k]),backgroundColor:COLORS.map(c=>c+'CC'),borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt(ctx.raw)}}},scales:{y:{beginAtZero:true,grid:{color:'#f0e8dc'},ticks:{callback:v=>'$'+Math.round(v/1000)+'k'}},x:{grid:{display:false}}}}});
 }
 
 function renderResumen(){
