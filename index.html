@@ -505,7 +505,7 @@ function showTab(t){
   if(t==='cobros')renderCobros();
   if(t==='estadisticas')renderStats();
   if(t==='resumen')renderResumen();
-  if(t==='proyeccion')renderProyeccion();
+  if(t==='proyeccion')setTimeout(renderProyeccion, 50);
   if(t==='admin')renderAdmin();
   if(t==='nuevo')renderNuevo();
 }
