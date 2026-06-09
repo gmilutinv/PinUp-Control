@@ -303,6 +303,15 @@ const PRECIOS_BULTO = {
   'Millán SA (Átomo)':{2:907*12*(1-0.44)*(1-0.12)*(1-0.01),3:1611*6*(1-0.44)*(1-0.12)*(1-0.01),4:3379*16*(1-0.44)*(1-0.12)*(1-0.01),5:2016*12*(1-0.44)*(1-0.12)*(1-0.01),6:2006*6*(1-0.44)*(1-0.12)*(1-0.01),7:1113*9*(1-0.44)*(1-0.12)*(1-0.01),8:1776*12*(1-0.44)*(1-0.12)*(1-0.01),9:1214*20*(1-0.44)*(1-0.12)*(1-0.01),10:4462*12*(1-0.44)*(1-0.12)*(1-0.01)},
 };
 
+const CLIENTES = [
+  {nombre:'Dispress',          provincia:'Mendoza'},
+  {nombre:'Distribuidora WADA',provincia:'Mendoza'},
+  {nombre:'Millán SA (Átomo)', provincia:'Mendoza'},
+];
+const getProvinciaCliente = nombre => (CLIENTES.find(c=>c.nombre===nombre)||{provincia:''}).provincia;
+
+const PROVINCIAS_AR = ['Buenos Aires','CABA','Catamarca','Chaco','Chubut','Córdoba','Corrientes','Entre Ríos','Formosa','Jujuy','La Pampa','La Rioja','Mendoza','Misiones','Neuquén','Río Negro','Salta','San Juan','San Luis','Santa Cruz','Santa Fe','Santiago del Estero','Tierra del Fuego','Tucumán'];
+
 const COLORS=['#D32F2F','#1565C0','#2E7D32','#E65100','#6A1B9A','#00695C','#F57F17','#37474F','#AD1457','#558B2F'];
 
 // ── INVITE TOKEN DETECTION ──────────────────────────────────────────────────
@@ -515,7 +524,16 @@ function renderNuevo(){
     <div class="card">
       <h2>Nuevo Pedido</h2>
       <div class="form-row">
-        <div class="field"><label>Cliente</label><input type="text" id="f-cliente" placeholder="Ej: Dispress"></div>
+        <div class="field"><label>Cliente</label>
+          <select id="f-cliente" onchange="autoProvinciaForm()">
+            <option value="">Seleccioná cliente...</option>
+            <option value="Dispress">Dispress</option>
+            <option value="Distribuidora WADA">Distribuidora WADA</option>
+            <option value="Millán SA (Átomo)">Millán SA (Átomo)</option>
+            <option value="__otro">Otro...</option>
+          </select>
+        </div>
+        <div class="field" id="f-cliente-otro-wrap" style="display:none"><label>Nombre cliente</label><input type="text" id="f-cliente-otro" placeholder="Nombre del cliente"></div>
         <div class="field"><label>Fecha</label><input type="date" id="f-fecha"></div>
         <div class="field"><label>Estado</label>
           <select id="f-estado">
@@ -531,6 +549,37 @@ function renderNuevo(){
         </div>
         <div class="field"><label>Fecha cobro</label><input type="date" id="f-fechacobro"></div>
         <div class="field"><label>Notas</label><input type="text" id="f-notas" placeholder="Ej: 60 días factura"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Provincia</label>
+          <select id="f-provincia">
+            <option value="">Seleccioná...</option>
+            <option value="Buenos Aires">Buenos Aires</option>
+            <option value="CABA">CABA</option>
+            <option value="Córdoba">Córdoba</option>
+            <option value="Mendoza" selected>Mendoza</option>
+            <option value="Santa Fe">Santa Fe</option>
+            <option value="Tucumán">Tucumán</option>
+            <option value="Salta">Salta</option>
+            <option value="Entre Ríos">Entre Ríos</option>
+            <option value="Neuquén">Neuquén</option>
+            <option value="Río Negro">Río Negro</option>
+            <option value="San Juan">San Juan</option>
+            <option value="San Luis">San Luis</option>
+            <option value="La Rioja">La Rioja</option>
+            <option value="Catamarca">Catamarca</option>
+            <option value="Jujuy">Jujuy</option>
+            <option value="Chaco">Chaco</option>
+            <option value="Corrientes">Corrientes</option>
+            <option value="Misiones">Misiones</option>
+            <option value="Formosa">Formosa</option>
+            <option value="Chubut">Chubut</option>
+            <option value="Santa Cruz">Santa Cruz</option>
+            <option value="La Pampa">La Pampa</option>
+            <option value="Santiago del Estero">Santiago del Estero</option>
+            <option value="Tierra del Fuego">Tierra del Fuego</option>
+          </select>
+        </div>
       </div>
       <div style="overflow-x:auto">
         <table class="ptbl">
@@ -556,6 +605,20 @@ function renderNuevo(){
     </div>`;
   document.getElementById('f-fecha').valueAsDate=new Date();
   renderFormProds();
+}
+
+function autoProvinciaForm(){
+  const sel = document.getElementById('f-cliente').value;
+  const otroWrap = document.getElementById('f-cliente-otro-wrap');
+  const provSel = document.getElementById('f-provincia');
+  if(sel === '__otro'){
+    otroWrap.style.display = 'block';
+    provSel.value = '';
+  } else {
+    otroWrap.style.display = 'none';
+    const prov = getProvinciaCliente(sel);
+    if(prov) provSel.value = prov;
+  }
 }
 
 function renderFormProds(){
@@ -597,7 +660,8 @@ function recalcFormTotal(){
 }
 
 async function guardar(){
-  const cl=document.getElementById('f-cliente').value.trim();
+  const clSel=document.getElementById('f-cliente').value;
+  const cl = clSel === '__otro' ? (document.getElementById('f-cliente-otro').value.trim()) : clSel;
   const fe=document.getElementById('f-fecha').value;
   if(!cl||!fe){document.getElementById('form-msg').textContent='Completá cliente y fecha.';return;}
   const prods=PRODS.map(p=>({pid:p.id,bultos:parseInt(document.getElementById('b-'+p.id).value)||0,precio:parseFloat(document.getElementById('precio-'+p.id).value)||0,bonificado:document.getElementById('bon-'+p.id).checked})).filter(p=>p.bultos>0);
@@ -605,6 +669,7 @@ async function guardar(){
   try{
     await supa('/rest/v1/pedidos','POST',{
       cliente:cl,fecha:fe,
+      provincia:document.getElementById('f-provincia').value||null,
       estado:document.getElementById('f-estado').value,
       cobro:document.getElementById('f-cobro').value,
       fecha_cobro:document.getElementById('f-fechacobro').value||null,
@@ -644,7 +709,7 @@ function renderPedidos(){
     return`<div class="pedido-card">
       <div class="pedido-header" onclick="tog(${p.id})">
         <div class="pedido-num">P${p.id}</div>
-        <div class="pedido-info"><div class="cliente">${p.cliente}</div><div class="fecha">${p.fecha} · ${tb} bultos</div></div>
+        <div class="pedido-info"><div class="cliente">${p.cliente}</div><div class="fecha">${p.fecha} · ${tb} bultos${p.provincia ? ' · <span style="color:var(--blue);font-weight:600">'+p.provincia+'</span>' : ''}</div></div>
         <span class="badge ${bc}">${bt}</span>
         <span class="badge ${p.cobro==='pagado'?'badge-pagado':'badge-nopagado'}" style="margin-left:4px">${p.cobro==='pagado'?'Cobrado':'Sin cobrar'}</span>
         <strong style="font-family:Georgia,serif;font-size:16px;color:var(--green);margin-left:6px">${fmt(tm)}</strong>
@@ -773,8 +838,11 @@ function renderCobros(){
 }
 
 function renderStats(){
+  const provincias=[...new Set(pedidos.map(p=>p.provincia||'Sin provincia'))].sort();
+  const provFilter=document.getElementById('stats-prov-filter')?.value||'';
+  const pedsFilt=provFilter?pedidos.filter(p=>(p.provincia||'Sin provincia')===provFilter):pedidos;
   const map={};
-  pedidos.forEach(ped=>(ped.productos||[]).forEach(pr=>{
+  pedsFilt.forEach(ped=>(ped.productos||[]).forEach(pr=>{
     const pp=getProd(pr.pid);if(!pp)return;
     const k=`${pp.nombre} ${pp.pres}`;
     if(!map[k])map[k]={nombre:pp.nombre,pres:pp.pres,uxb:pp.uxb,bultos:0,unids:0,count:0};
@@ -782,12 +850,19 @@ function renderStats(){
   }));
   const sorted=Object.entries(map).sort((a,b)=>b[1].bultos-a[1].bultos);
   const cliMap={};
-  pedidos.forEach(p=>{if(!cliMap[p.cliente])cliMap[p.cliente]=0;cliMap[p.cliente]+=totalBultos(p);});
+  pedsFilt.forEach(p=>{if(!cliMap[p.cliente])cliMap[p.cliente]=0;cliMap[p.cliente]+=totalBultos(p);});
   const mesesMap={};
-  pedidos.forEach(p=>{const m=p.fecha?p.fecha.substring(0,7):'';if(m){if(!mesesMap[m])mesesMap[m]=0;mesesMap[m]+=totalBultos(p);}});
+  pedsFilt.forEach(p=>{const m=p.fecha?p.fecha.substring(0,7):'';if(m){if(!mesesMap[m])mesesMap[m]=0;mesesMap[m]+=totalBultos(p);}});
   const mKeys=Object.keys(mesesMap).sort();
 
   document.getElementById('tab-estadisticas').innerHTML=`
+    <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#666">Filtrar por provincia:</label>
+      <select onchange="renderStats()" id="stats-prov-filter" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+        <option value="">Todas</option>
+        ${provincias.map(pr=>`<option value="${pr}" ${pr===provFilter?'selected':''}>${pr}</option>`).join('')}
+      </select>
+    </div>
     <div class="charts-grid">
       <div class="chart-card"><h3>Productos más vendidos</h3><div class="chart-wrap"><canvas id="chart-torta"></canvas></div></div>
       <div class="chart-card"><h3>Ventas por cliente</h3><div class="chart-wrap"><canvas id="chart-clientes"></canvas></div></div>
@@ -807,26 +882,37 @@ function renderStats(){
 }
 
 function renderResumen(){
-  const totalB=pedidos.reduce((a,p)=>a+totalBultos(p),0);
-  const totalM=pedidos.reduce((a,p)=>a+totalMonto(p),0);
-  const cobrados=pedidos.filter(p=>p.cobro==='pagado').length;
-  const pendCobro=pedidos.filter(p=>p.cobro!=='pagado').length;
+  // totals now computed from pedsFilt above
+  const provincias=[...new Set(pedidos.map(p=>p.provincia||'Sin provincia').filter(Boolean))].sort();
+  const provFilter=document.getElementById('res-prov-filter')?.value||'';
+  const pedsFilt=provFilter?pedidos.filter(p=>(p.provincia||'Sin provincia')===provFilter):pedidos;
+  const totalBF=pedsFilt.reduce((a,p)=>a+totalBultos(p),0);
+  const totalMF=pedsFilt.reduce((a,p)=>a+totalMonto(p),0);
+  const cobradosF=pedsFilt.filter(p=>p.cobro==='pagado').length;
+  const pendCobroF=pedsFilt.filter(p=>p.cobro!=='pagado').length;
   const cliMap={};
-  pedidos.forEach(p=>{
-    if(!cliMap[p.cliente])cliMap[p.cliente]={peds:0,bultos:0,monto:0,cobrado:0};
+  pedsFilt.forEach(p=>{
+    if(!cliMap[p.cliente])cliMap[p.cliente]={peds:0,bultos:0,monto:0,cobrado:0,provincia:p.provincia||''};
     cliMap[p.cliente].peds++;cliMap[p.cliente].bultos+=totalBultos(p);cliMap[p.cliente].monto+=totalMonto(p);
     if(p.cobro==='pagado')cliMap[p.cliente].cobrado++;
   });
   document.getElementById('tab-resumen').innerHTML=`
+    <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <label style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#666">Filtrar por provincia:</label>
+      <select onchange="renderResumen()" id="res-prov-filter" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+        <option value="">Todas</option>
+        ${provincias.map(pr=>`<option value="${pr}" ${pr===provFilter?'selected':''}>${pr}</option>`).join('')}
+      </select>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
-      <div class="stat"><div class="label">Total pedidos</div><div class="value">${pedidos.length}</div><div class="sub">${pedidos.filter(p=>p.estado==='entregado').length} entregados</div></div>
-      <div class="stat"><div class="label">Total vendido</div><div class="value" style="font-size:16px;color:var(--green)">${fmt(totalM)}</div><div class="sub">${totalB} bultos</div></div>
-      <div class="stat"><div class="label">Clientes</div><div class="value">${new Set(pedidos.map(p=>p.cliente)).size}</div></div>
-      <div class="stat"><div class="label">Cobros</div><div class="value" style="color:var(--green)">${cobrados}</div><div class="sub" style="color:var(--red)">${pendCobro} pendientes</div></div>
+      <div class="stat"><div class="label">Total pedidos</div><div class="value">${pedsFilt.length}</div><div class="sub">${pedsFilt.filter(p=>p.estado==='entregado').length} entregados</div></div>
+      <div class="stat"><div class="label">Total vendido</div><div class="value" style="font-size:16px;color:var(--green)">${fmt(totalMF)}</div><div class="sub">${totalBF} bultos</div></div>
+      <div class="stat"><div class="label">Clientes</div><div class="value">${new Set(pedsFilt.map(p=>p.cliente)).size}</div></div>
+      <div class="stat"><div class="label">Cobros</div><div class="value" style="color:var(--green)">${cobradosF}</div><div class="sub" style="color:var(--red)">${pendCobroF} pendientes</div></div>
     </div>
     <div class="card"><h2>Resumen por cliente</h2>
-      <table class="stbl"><thead><tr><th>Cliente</th><th>Pedidos</th><th>Bultos</th><th>Total $</th><th>Cobrado</th></tr></thead>
-      <tbody>${Object.entries(cliMap).map(([k,v])=>`<tr><td><strong>${k}</strong></td><td class="num">${v.peds}</td><td class="num">${v.bultos}</td><td class="num big-num">${fmt(v.monto)}</td><td class="num"><span class="badge ${v.cobrado===v.peds?'badge-pagado':'badge-nopagado'}">${v.cobrado}/${v.peds}</span></td></tr>`).join('')}</tbody>
+      <table class="stbl"><thead><tr><th>Cliente</th><th>Provincia</th><th>Pedidos</th><th>Bultos</th><th>Total $</th><th>Cobrado</th></tr></thead>
+      <tbody>${Object.entries(cliMap).map(([k,v])=>`<tr><td><strong>${k}</strong></td><td style="color:var(--blue);font-size:12px">${v.provincia||'—'}</td><td class="num">${v.peds}</td><td class="num">${v.bultos}</td><td class="num big-num">${fmt(v.monto)}</td><td class="num"><span class="badge ${v.cobrado===v.peds?'badge-pagado':'badge-nopagado'}">${v.cobrado}/${v.peds}</span></td></tr>`).join('')}</tbody>
       </table></div>`;
 }
 
