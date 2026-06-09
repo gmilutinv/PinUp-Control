@@ -809,6 +809,7 @@ async function toggleCobro(id){
   p.cobro=p.cobro==='pagado'?'nopagado':'pagado';
   await supa(`/rest/v1/pedidos?id=eq.${id}`,'PATCH',{cobro:p.cobro});
   renderPedidos();updateStats();
+}
 
 function calcFechaCobro(fechaPedido, dias){
   if(!fechaPedido || dias===null || isNaN(dias)) return null;
@@ -855,7 +856,6 @@ async function subirOC(id,input){
     status.textContent='✓ Subido';
     setTimeout(()=>renderPedidos(),800);
   }catch(e){status.style.color='var(--red)';status.textContent='Error: '+e.message;}
-}
 }
 
 async function eliminarPedido(id){
