@@ -240,6 +240,7 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
     <div id="tab-cobros" style="display:none"></div>
     <div id="tab-estadisticas" style="display:none"></div>
     <div id="tab-resumen" style="display:none"></div>
+    <div id="tab-proyeccion" style="display:none"></div>
     <div id="tab-admin" style="display:none"></div>
   </div>
 </div>
@@ -482,6 +483,7 @@ function buildTabs(){
     {id:'cobros',label:'💰 Cobros',roles:['admin','comercial']},
     {id:'estadisticas',label:'📊 Stats',roles:['admin','comercial']},
     {id:'resumen',label:'📋 Resumen',roles:['admin','comercial']},
+    {id:'proyeccion',label:'📅 Proyección',roles:['admin','comercial']},
     {id:'admin',label:'⚙️ Admin',roles:['admin']},
   ];
   const visible=tabs.filter(t=>t.roles.includes(rol));
@@ -502,6 +504,7 @@ function showTab(t){
   if(t==='cobros')renderCobros();
   if(t==='estadisticas')renderStats();
   if(t==='resumen')renderResumen();
+  if(t==='proyeccion')renderProyeccion();
   if(t==='admin')renderAdmin();
   if(t==='nuevo')renderNuevo();
 }
@@ -734,6 +737,30 @@ function renderPedidos(){
           <div style="font-family:Georgia,serif;font-size:20px;color:var(--green)">TOTAL: <span id="total-final-${p.id}">${fmt(tm)}</span></div>
         </div>
         ${p.notas?`<p style="font-size:11px;color:#888;margin-top:6px">📝 ${p.notas}</p>`:''}
+        ${canEdit?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:11px;color:#666;font-weight:600;white-space:nowrap">N° Factura</label>
+            <input type="text" id="nro-fac-${p.id}" value="${p.nro_factura||''}" placeholder="—" style="width:110px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;background:var(--cream)" onblur="guardarCampo(${p.id},'nro_factura',this.value)">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:11px;color:#666;font-weight:600;white-space:nowrap">N° Remito</label>
+            <input type="text" id="nro-rem-${p.id}" value="${p.nro_remito||''}" placeholder="—" style="width:110px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;background:var(--cream)" onblur="guardarCampo(${p.id},'nro_remito',this.value)">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:11px;color:#666;font-weight:600;white-space:nowrap">N° OC</label>
+            <input type="text" id="nro-oc-${p.id}" value="${p.nro_oc||''}" placeholder="—" style="width:110px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;background:var(--cream)" onblur="guardarCampo(${p.id},'nro_oc',this.value)">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:11px;color:#666;font-weight:600;white-space:nowrap">Archivo OC</label>
+            ${p.oc_url
+              ? `<a href="${p.oc_url}" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:underline">Ver OC 📎</a>
+                 <label style="cursor:pointer;font-size:11px;color:#888;text-decoration:underline">Reemplazar<input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="subirOC(${p.id},this)"></label>`
+              : `<label style="cursor:pointer;padding:4px 10px;background:var(--cream);border:1px solid var(--border);border-radius:5px;font-size:11px;cursor:pointer">
+                   📎 Subir OC<input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="subirOC(${p.id},this)">
+                 </label>`}
+            <span id="oc-status-${p.id}" style="font-size:11px;color:var(--green)"></span>
+          </div>
+        </div>`:''}
         <div class="pedido-actions">
           ${canEdit?`<select onchange="cambiarEstado(${p.id},this.value)">
             <option value="pendiente" ${p.estado==='pendiente'?'selected':''}>Pendiente</option>
@@ -773,6 +800,32 @@ async function toggleCobro(id){
   p.cobro=p.cobro==='pagado'?'nopagado':'pagado';
   await supa(`/rest/v1/pedidos?id=eq.${id}`,'PATCH',{cobro:p.cobro});
   renderPedidos();updateStats();
+
+async function guardarCampo(id,campo,valor){
+  const p=pedidos.find(x=>x.id===id);if(!p)return;
+  p[campo]=valor;
+  await supa(`/rest/v1/pedidos?id=eq.${id}`,'PATCH',{[campo]:valor||null});
+}
+
+async function subirOC(id,input){
+  const file=input.files[0];if(!file)return;
+  const status=document.getElementById('oc-status-'+id);
+  status.textContent='Subiendo...';
+  try{
+    const ext=file.name.split('.').pop();
+    const path=`oc/${id}_${Date.now()}.${ext}`;
+    const r=await fetch(`${SUPA_URL}/storage/v1/object/app/${path}`,{
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+supaToken,'Content-Type':file.type,'x-upsert':'true'},
+      body:file
+    });
+    if(!r.ok)throw new Error('Error al subir');
+    const url=`${SUPA_URL}/storage/v1/object/public/app/${path}`;
+    await guardarCampo(id,'oc_url',url);
+    status.textContent='✓ Subido';
+    setTimeout(()=>renderPedidos(),800);
+  }catch(e){status.style.color='var(--red)';status.textContent='Error: '+e.message;}
+}
 }
 
 async function eliminarPedido(id){
@@ -1065,6 +1118,100 @@ async function rechazarSolicitud(id){
 async function cambiarRol(uid,rol){
   await supa(`/rest/v1/profiles?id=eq.${uid}`,'PATCH',{rol});
 }
+
+function renderProyeccion(){
+  // Build month-by-month collection forecast based on dias_cobro
+  // cobro modes: '30dias','60dias','90dias','contado','anticipado'
+  const diasMap={'contado':0,'anticipado':-7,'30dias':30,'60dias':60,'90dias':90};
+
+  // Group uncollected pedidos by expected collection month
+  const mesesMap={};
+  const pendientes=[];
+
+  pedidos.forEach(p=>{
+    if(p.cobro==='pagado') return; // already collected
+    const fecha=p.fecha_cobro||p.fecha;
+    if(!fecha) return;
+    const dias=diasMap[p.cobro]??30;
+    const base=new Date(fecha);
+    base.setDate(base.getDate()+dias);
+    const mes=base.toISOString().substring(0,7); // YYYY-MM
+    if(!mesesMap[mes]) mesesMap[mes]={monto:0,pedidos:[]};
+    const monto=totalMonto(p);
+    mesesMap[mes].monto+=monto;
+    mesesMap[mes].pedidos.push({...p,monto,fechaEsperada:base.toISOString().substring(0,10)});
+    pendientes.push(p);
+  });
+
+  const meses=Object.keys(mesesMap).sort();
+  const totalPend=pendientes.reduce((a,p)=>a+totalMonto(p),0);
+
+  const mesLabels={'01':'Enero','02':'Febrero','03':'Marzo','04':'Abril','05':'Mayo','06':'Junio',
+    '07':'Julio','08':'Agosto','09':'Septiembre','10':'Octubre','11':'Noviembre','12':'Diciembre'};
+  const getMesLabel=m=>{const [y,mo]=m.split('-');return `${mesLabels[mo]} ${y}`;};
+
+  document.getElementById('tab-proyeccion').innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
+      <div class="stat"><div class="label">Total a cobrar</div><div class="value" style="font-size:15px;color:var(--red)">${fmt(totalPend)}</div><div class="sub">${pendientes.length} pedidos pendientes</div></div>
+      <div class="stat"><div class="label">Próximo cobro</div><div class="value" style="font-size:13px">${meses[0]?getMesLabel(meses[0]):'—'}</div><div class="sub">${meses[0]?fmt(mesesMap[meses[0]].monto):''}</div></div>
+      <div class="stat"><div class="label">Meses con cobros</div><div class="value">${meses.length}</div></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h2>Proyección mes a mes</h2>
+      <div style="overflow-x:auto">
+        <table class="stbl">
+          <thead><tr><th>Mes</th><th>Monto esperado</th><th>Pedidos</th><th>Detalle</th></tr></thead>
+          <tbody>${meses.map(m=>{
+            const {monto,pedidos:ps}=mesesMap[m];
+            return `<tr style="border-bottom:2px solid var(--border)">
+              <td style="font-weight:700;font-size:14px;white-space:nowrap">${getMesLabel(m)}</td>
+              <td class="num" style="font-size:16px;font-weight:700;color:var(--green)">${fmt(monto)}</td>
+              <td class="num">${ps.length}</td>
+              <td style="font-size:11px;color:#888">
+                ${ps.map(p=>`<div style="margin:2px 0"><strong>${p.cliente}</strong> · ${fmt(p.monto)} · vence ${p.fechaEsperada}</div>`).join('')}
+              </td>
+            </tr>`;
+          }).join('')}
+          </tbody>
+          <tfoot><tr style="background:var(--light)">
+            <td style="font-weight:700">TOTAL</td>
+            <td class="num" style="font-weight:700;color:var(--green)">${fmt(totalPend)}</td>
+            <td class="num">${pendientes.length}</td>
+            <td></td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Gráfico de cobranza</h2>
+      <div class="chart-wrap" style="height:220px"><canvas id="chart-proyeccion"></canvas></div>
+    </div>`;
+
+  if(charts.proyeccion) charts.proyeccion.destroy();
+  charts.proyeccion=new Chart(document.getElementById('chart-proyeccion'),{
+    type:'bar',
+    data:{
+      labels:meses.map(getMesLabel),
+      datasets:[{
+        label:'Monto a cobrar $',
+        data:meses.map(m=>mesesMap[m].monto),
+        backgroundColor:'rgba(211,47,47,0.7)',
+        borderColor:'#D32F2F',
+        borderWidth:1,
+        borderRadius:4
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt(ctx.raw)}}},
+      scales:{
+        y:{beginAtZero:true,grid:{color:'#f0e8dc'},ticks:{callback:v=>fmt(v)}},
+        x:{grid:{display:false}}
+      }
+    }
+  });
+}
+
 </script>
 </body>
 </html>
