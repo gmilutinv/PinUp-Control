@@ -431,8 +431,9 @@ let supaToken=null, currentUser=null, currentProfile=null, pedidos=[], charts={}
 async function supa(path,method='GET',body=null){
   const h={'apikey':SUPA_KEY,'Content-Type':'application/json'};
   if(supaToken)h['Authorization']='Bearer '+supaToken;
+  if(method==='PATCH'||method==='POST'||method==='DELETE') h['Prefer']='return=representation';
   const r=await fetch(SUPA_URL+path,{method,headers:h,body:body?JSON.stringify(body):null});
-  if(!r.ok){const e=await r.text();throw new Error(e);}
+  if(!r.ok){const e=await r.text();console.error('Supa error',method,path,e);throw new Error(e);}
   const t=r.headers.get('content-type');
   return t&&t.includes('json')?r.json():r.text();
 }
