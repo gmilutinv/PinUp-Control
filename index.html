@@ -508,7 +508,7 @@ function showTab(t){
 
 async function loadPedidos(){
   try{
-    pedidos=await supa('/rest/v1/pedidos?select=*&order=created_at.desc');
+    pedidos=await supa('/rest/v1/pedidos?select=*&order=created_at.asc');
     pedidos=pedidos.map(p=>({...p,productos:p.productos||[]}));
     updateStats();
   }catch(e){console.error(e);}
@@ -726,7 +726,7 @@ function renderPedidos(){
         <table><thead><tr><th>Producto</th><th>Pres.</th><th>Bultos</th><th>Unidades</th><th>Precio/u</th><th>Subtotal</th></tr></thead><tbody>${rows}</tbody></table>
         <div style="text-align:right;padding:8px 0;border-top:1px solid var(--border);margin-top:4px">
           <div style="font-size:12px;color:var(--mid);margin-bottom:4px;display:flex;align-items:center;justify-content:flex-end;gap:8px">
-            <input type="checkbox" id="iva-${p.id}" ${p.con_iva?'checked':''} onchange="toggleIva(${p.id},${tm})">
+            <input type="checkbox" id="iva-${p.id}" ${p.con_iva?'checked':''} onchange="toggleIva(${p.id})">
             <label for="iva-${p.id}" style="cursor:pointer;font-weight:500;font-size:12px">Incluir IVA 21%</label>
           </div>
           <div style="font-size:12px;color:var(--mid)">Subtotal s/IVA: <strong>${fmt(totalMontoNeto(p))}</strong></div>
@@ -753,11 +753,13 @@ function tog(id){
   document.getElementById('chev-'+id).classList.toggle('open');
 }
 
-async function toggleIva(id,tm){
+async function toggleIva(id){
   const p=pedidos.find(x=>x.id===id);if(!p)return;
   p.con_iva=document.getElementById('iva-'+id).checked;
+  const neto=totalMontoNeto(p);
   document.getElementById('iva-row-'+id).style.display=p.con_iva?'block':'none';
-  document.getElementById('total-final-'+id).textContent=p.con_iva?fmt(tm*1.21):fmt(tm);
+  document.getElementById('total-final-'+id).textContent=p.con_iva?fmt(neto*1.21):fmt(neto);
+  updateStats();
   await supa(`/rest/v1/pedidos?id=eq.${id}`,'PATCH',{con_iva:p.con_iva});
 }
 
