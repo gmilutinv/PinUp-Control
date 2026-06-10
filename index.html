@@ -1186,6 +1186,7 @@ async function renderAdmin(){
           <option value="">Sin provincia</option>
           ${PROVINCIAS_AR.map(p=>`<option value="${p}" ${u.provincia===p?'selected':''}>${p}</option>`).join('')}
         </select>
+        ${u.id!==currentUser.id?`<button class="btn-sm btn-danger" onclick="eliminarUsuario('${u.id}','${(u.nombre||'este usuario').replace(/'/g,'')}')" style="margin-left:4px">🗑 Eliminar</button>`:''}
       </div>`).join('')}
     </div>`;
 }
@@ -1216,10 +1217,22 @@ async function rechazarSolicitud(id){
 
 async function cambiarProvincia(uid, provincia){
   await supa(`/rest/v1/profiles?id=eq.${uid}`,'PATCH',{provincia:provincia||null});
+  alert(provincia ? `✓ Provincia asignada: ${provincia}` : '✓ Provincia removida.');
 }
 
 async function cambiarRol(uid,rol){
   await supa(`/rest/v1/profiles?id=eq.${uid}`,'PATCH',{rol});
+  alert(`✓ Rol actualizado a: ${rol}`);
+}
+
+async function eliminarUsuario(uid, nombre){
+  if(!confirm(`¿Seguro que querés eliminar a ${nombre}? Esta acción no se puede deshacer.`)) return;
+  try{
+    await supa(`/rest/v1/profiles?id=eq.${uid}`,'DELETE');
+    renderAdmin();
+  }catch(e){
+    alert('Error al eliminar el usuario. Intentá de nuevo.');
+  }
 }
 
 function renderProyeccion(){
