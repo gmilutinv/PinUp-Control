@@ -221,6 +221,13 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
     <div class="user-info">
       <strong id="user-nombre">...</strong>
       <span id="user-rol-badge"></span>
+      <div id="prov-filter-wrap" style="display:none;position:relative">
+        <button id="prov-filter-btn" onclick="toggleProvFilter()" style="padding:5px 10px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:6px;color:white;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px">🗺 <span id="prov-filter-label">Todas</span> ▾</button>
+        <div id="prov-filter-dropdown" style="display:none;position:absolute;right:0;top:110%;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:200;min-width:180px;padding:6px 0">
+          <div onclick="setProvFilter(null)" style="padding:8px 14px;font-size:12px;cursor:pointer;color:#333;font-weight:600" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''">🗺 Todas las provincias</div>
+          <div id="prov-filter-options"></div>
+        </div>
+      </div>
       <button class="btn-logout" onclick="logout()">Salir</button>
     </div>
   </header>
@@ -426,7 +433,7 @@ function totalMonto(p){
 }
 function totalBultos(p){return (p.productos||[]).reduce((a,x)=>a+x.bultos,0);}
 
-let supaToken=null, currentUser=null, currentProfile=null, pedidos=[], charts={}, editingId=null;
+let supaToken=null, currentUser=null, currentProfile=null, pedidos=[], charts={}, editingId=null, filtroProvinciaActual=null;
 
 async function supa(path,method='GET',body=null){
   const h={'apikey':SUPA_KEY,'Content-Type':'application/json'};
@@ -472,8 +479,37 @@ function showApp(){
   document.getElementById('app').style.display='block';
   document.getElementById('user-nombre').textContent=currentProfile.nombre;
   document.getElementById('user-rol-badge').innerHTML=`<span class="rol-badge rol-${currentProfile.rol}">${currentProfile.rol}</span>`;
+  // Vendors see only their province; admin sees all by default
+  if(currentProfile.rol !== 'admin' && currentProfile.provincia){
+    filtroProvinciaActual = currentProfile.provincia;
+    document.getElementById('prov-filter-wrap').style.display='none';
+  } else {
+    filtroProvinciaActual = null;
+    document.getElementById('prov-filter-wrap').style.display='block';
+  }
   buildTabs();
   loadPedidos();
+}
+
+function toggleProvFilter(){
+  const dd=document.getElementById('prov-filter-dropdown');
+  dd.style.display=dd.style.display==='none'?'block':'none';
+}
+
+function setProvFilter(prov){
+  filtroProvinciaActual=prov;
+  document.getElementById('prov-filter-label').textContent=prov||'Todas';
+  document.getElementById('prov-filter-dropdown').style.display='none';
+  // Re-render current tab
+  const activeTab=document.querySelector('.tab.active');
+  if(activeTab) activeTab.click();
+}
+
+function updateProvFilterOptions(){
+  const provincias=[...new Set(pedidos.map(p=>p.provincia).filter(Boolean))].sort();
+  document.getElementById('prov-filter-options').innerHTML=provincias.map(p=>
+    `<div onclick="setProvFilter('${p}')" style="padding:8px 14px;font-size:12px;cursor:pointer;color:#333" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''">${p}</div>`
+  ).join('');
 }
 
 function buildTabs(){
@@ -514,14 +550,16 @@ async function loadPedidos(){
   try{
     pedidos=await supa('/rest/v1/pedidos?select=*&order=created_at.asc');
     pedidos=pedidos.map(p=>({...p,productos:p.productos||[]}));
+    updateProvFilterOptions();
     updateStats();
   }catch(e){console.error(e);}
 }
 
 function updateStats(){
-  const tm=pedidos.reduce((a,p)=>a+totalMonto(p),0);
-  const cli=new Set(pedidos.map(p=>p.cliente)).size;
-  const pend=pedidos.filter(p=>p.cobro!=='pagado').length;
+  const pedFilt=filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
+  const tm=pedFilt.reduce((a,p)=>a+totalMonto(p),0);
+  const cli=new Set(pedFilt.map(p=>p.cliente)).size;
+  const pend=pedFilt.filter(p=>p.cobro!=='pagado').length;
   document.getElementById('st-ped').textContent=pedidos.length;
   document.getElementById('st-monto').textContent=fmt(tm);
   document.getElementById('st-cli').textContent=cli;
@@ -700,7 +738,12 @@ function renderPedidos(){
   const list=document.getElementById('tab-pedidos');
   if(!pedidos.length){list.innerHTML='<div class="empty">No hay pedidos.</div>';return;}
   const canEdit=['admin','comercial'].includes(currentProfile.rol);
-  list.innerHTML=pedidos.map((p,idx)=>{
+  // Apply global provincia filter
+  const pedidosFiltrados = filtroProvinciaActual
+    ? pedidos.filter(p=>p.provincia===filtroProvinciaActual)
+    : pedidos;
+  if(!pedidosFiltrados.length){list.innerHTML='<div class="empty">No hay pedidos para esta provincia.</div>';return;}
+  list.innerHTML=pedidosFiltrados.map((p,idx)=>{
     const tb=totalBultos(p),tm=totalMonto(p);
     const bc=p.estado==='entregado'?'badge-entregado':p.estado==='produccion'?'badge-produccion':'badge-pendiente';
     const bt=p.estado==='entregado'?'Entregado':p.estado==='produccion'?'En producción':'Pendiente';
@@ -914,7 +957,8 @@ async function guardarEdicion(){
 }
 
 function renderCobros(){
-  const sorted=[...pedidos].sort((a,b)=>(a.fecha_cobro||'9999')>(b.fecha_cobro||'9999')?1:-1);
+  const pedidosProv=filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
+  const sorted=[...pedidosProv].sort((a,b)=>(a.fecha_cobro||'9999')>(b.fecha_cobro||'9999')?1:-1);
   const canEdit=['admin','comercial'].includes(currentProfile.rol);
   document.getElementById('tab-cobros').innerHTML=`<div class="card"><h2>Estado de cobros</h2>${
     sorted.map(p=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap">
@@ -930,9 +974,10 @@ function renderCobros(){
 }
 
 function renderStats(){
-  const provincias=[...new Set(pedidos.map(p=>p.provincia||'Sin provincia'))].sort();
+  const pedidosProv=filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
+  const provincias=[...new Set(pedidosProv.map(p=>p.provincia||'Sin provincia'))].sort();
   const provFilter=document.getElementById('stats-prov-filter')?.value||'';
-  const pedsFilt=provFilter?pedidos.filter(p=>(p.provincia||'Sin provincia')===provFilter):pedidos;
+  const pedsFilt=provFilter?pedidosProv.filter(p=>(p.provincia||'Sin provincia')===provFilter):pedidosProv;
   const map={};
   pedsFilt.forEach(ped=>(ped.productos||[]).forEach(pr=>{
     const pp=getProd(pr.pid);if(!pp)return;
@@ -1008,9 +1053,10 @@ function renderStats(){
 
 function renderResumen(){
   // totals now computed from pedsFilt above
-  const provincias=[...new Set(pedidos.map(p=>p.provincia||'Sin provincia').filter(Boolean))].sort();
+  const pedidosProv=filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
+  const provincias=[...new Set(pedidosProv.map(p=>p.provincia||'Sin provincia').filter(Boolean))].sort();
   const provFilter=document.getElementById('res-prov-filter')?.value||'';
-  const pedsFilt=provFilter?pedidos.filter(p=>(p.provincia||'Sin provincia')===provFilter):pedidos;
+  const pedsFilt=provFilter?pedidosProv.filter(p=>(p.provincia||'Sin provincia')===provFilter):pedidosProv;
   const totalBF=pedsFilt.reduce((a,p)=>a+totalBultos(p),0);
   const totalMF=pedsFilt.reduce((a,p)=>a+totalMonto(p),0);
   const cobradosF=pedsFilt.filter(p=>p.cobro==='pagado').length;
@@ -1109,13 +1155,17 @@ async function renderAdmin(){
       <h2>Usuarios activos</h2>
       <p style="font-size:12px;color:#888;margin-bottom:14px">Podés cambiar el rol de cada usuario acá.</p>
       ${users.map(u=>`<div class="admin-user-card">
-        <div class="info"><div class="nombre">${u.nombre||'Sin nombre'}</div></div>
+        <div class="info"><div class="nombre">${u.nombre||'Sin nombre'}</div><div class="email" style="font-size:11px;color:#888">${u.provincia?'📍 '+u.provincia:'Sin provincia'}</div></div>
         <span class="rol-badge rol-${u.rol}">${u.rol}</span>
         <select onchange="cambiarRol('${u.id}',this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px">
           <option value="admin" ${u.rol==='admin'?'selected':''}>Admin</option>
           <option value="comercial" ${u.rol==='comercial'?'selected':''}>Comercial</option>
           <option value="produccion" ${u.rol==='produccion'?'selected':''}>Producción</option>
           <option value="compras" ${u.rol==='compras'?'selected':''}>Compras</option>
+        </select>
+        <select onchange="cambiarProvincia('${u.id}',this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px">
+          <option value="">Sin provincia</option>
+          ${PROVINCIAS_AR.map(p=>`<option value="${p}" ${u.provincia===p?'selected':''}>${p}</option>`).join('')}
         </select>
       </div>`).join('')}
     </div>`;
@@ -1145,6 +1195,10 @@ async function rechazarSolicitud(id){
   renderAdmin();
 }
 
+async function cambiarProvincia(uid, provincia){
+  await supa(`/rest/v1/profiles?id=eq.${uid}`,'PATCH',{provincia:provincia||null});
+}
+
 async function cambiarRol(uid,rol){
   await supa(`/rest/v1/profiles?id=eq.${uid}`,'PATCH',{rol});
 }
@@ -1153,7 +1207,8 @@ function renderProyeccion(){
   const mesesMap={};
   const pendientes=[];
 
-  pedidos.forEach(p=>{
+  const pedidosProv=filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
+  pedidosProv.forEach(p=>{
     if(p.cobro==='pagado') return;
     // dias_cobro puede venir como undefined, null o 0 de Supabase
     const diasNum = (p.dias_cobro !== undefined && p.dias_cobro !== null) ? parseInt(p.dias_cobro) : null;
