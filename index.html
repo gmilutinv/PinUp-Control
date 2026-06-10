@@ -214,6 +214,16 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
   </div>
 </div>
 
+<!-- SIN PROVINCIA -->
+<div id="no-provincia-screen" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;background:var(--dark)">
+  <div style="background:white;border-radius:16px;padding:32px;width:100%;max-width:380px;border-top:5px solid var(--red);text-align:center">
+    <div style="font-size:40px;margin-bottom:12px">🗺</div>
+    <div style="font-size:18px;font-weight:700;margin-bottom:8px">Cuenta pendiente de activación</div>
+    <div style="font-size:13px;color:#888;margin-bottom:24px">Tu cuenta aún no tiene una zona asignada. Contactá al administrador para que te asigne tu provincia.</div>
+    <button onclick="logout()" style="padding:10px 24px;background:var(--dark);color:white;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-weight:600">Cerrar sesión</button>
+  </div>
+</div>
+
 <!-- APP -->
 <div id="app">
   <header>
@@ -480,12 +490,19 @@ function showApp(){
   document.getElementById('user-nombre').textContent=currentProfile.nombre;
   document.getElementById('user-rol-badge').innerHTML=`<span class="rol-badge rol-${currentProfile.rol}">${currentProfile.rol}</span>`;
   // Vendors see only their province; admin sees all by default
-  if(currentProfile.rol !== 'admin' && currentProfile.provincia){
+  if(currentProfile.rol === 'admin'){
+    filtroProvinciaActual = null;
+    document.getElementById('prov-filter-wrap').style.display='block';
+  } else if(currentProfile.provincia){
     filtroProvinciaActual = currentProfile.provincia;
     document.getElementById('prov-filter-wrap').style.display='none';
   } else {
-    filtroProvinciaActual = null;
-    document.getElementById('prov-filter-wrap').style.display='block';
+    // Comercial without province assigned - show blocking screen
+    document.getElementById('prov-filter-wrap').style.display='none';
+    document.getElementById('app').style.display='none';
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('no-provincia-screen').style.display='flex';
+    return;
   }
   buildTabs();
   loadPedidos();
