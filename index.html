@@ -619,6 +619,10 @@ function renderNuevo(){
         <div class="field"><label>Notas</label><input type="text" id="f-notas" placeholder="Ej: 60 días factura"></div>
       </div>
       <div class="form-row">
+        <div class="field"><label>Dirección de entrega</label><input type="text" id="f-direccion" placeholder="Ej: Av. San Martín 1234, Mendoza"></div>
+        <div class="field"><label>Contacto de entrega</label><input type="text" id="f-contacto" placeholder="Ej: Juan Pérez / 261-555-1234"></div>
+      </div>
+      <div class="form-row">
         <div class="field"><label>Provincia</label>
           <select id="f-provincia">
             <option value="">Seleccioná...</option>
@@ -743,6 +747,8 @@ async function guardar(){
       dias_cobro:parseInt(document.getElementById('f-dias-cobro').value)||null,
       fecha_cobro:calcFechaCobro(document.getElementById('f-fecha').value, parseInt(document.getElementById('f-dias-cobro').value)||null),
       notas:document.getElementById('f-notas').value,
+      direccion_entrega:document.getElementById('f-direccion').value||null,
+      contacto_entrega:document.getElementById('f-contacto').value||null,
       con_iva:document.getElementById('f-iva').checked,
       productos:prods,
       created_by:currentUser.id
@@ -831,6 +837,31 @@ function renderPedidos(){
                  </label>`}
             <span id="oc-status-${p.id}" style="font-size:11px;color:var(--green)"></span>
           </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:11px;color:#666;font-weight:600;white-space:nowrap">Factura</label>
+            ${p.factura_url
+              ? `<a href="${p.factura_url}" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:underline">Ver Factura 📄</a>
+                 <label style="cursor:pointer;font-size:11px;color:#888;text-decoration:underline">Reemplazar<input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="subirArchivo(${p.id},'factura',this)"></label>`
+              : `<label style="cursor:pointer;padding:4px 10px;background:var(--cream);border:1px solid var(--border);border-radius:5px;font-size:11px">
+                   📄 Subir Factura<input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="subirArchivo(${p.id},'factura',this)">
+                 </label>`}
+            <span id="factura-status-${p.id}" style="font-size:11px;color:var(--green)"></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:11px;color:#666;font-weight:600;white-space:nowrap">Remito</label>
+            ${p.remito_url
+              ? `<a href="${p.remito_url}" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:underline">Ver Remito 🧾</a>
+                 <label style="cursor:pointer;font-size:11px;color:#888;text-decoration:underline">Reemplazar<input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="subirArchivo(${p.id},'remito',this)"></label>`
+              : `<label style="cursor:pointer;padding:4px 10px;background:var(--cream);border:1px solid var(--border);border-radius:5px;font-size:11px">
+                   🧾 Subir Remito<input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="subirArchivo(${p.id},'remito',this)">
+                 </label>`}
+            <span id="remito-status-${p.id}" style="font-size:11px;color:var(--green)"></span>
+          </div>
+          ${p.direccion_entrega || p.contacto_entrega ? `
+          <div style="margin-top:6px;padding:8px 10px;background:#f9f9f9;border-radius:6px;border:1px solid var(--border)">
+            ${p.direccion_entrega ? `<div style="font-size:11px;color:#555">📍 <strong>Dirección:</strong> ${p.direccion_entrega}</div>` : ''}
+            ${p.contacto_entrega ? `<div style="font-size:11px;color:#555;margin-top:2px">👤 <strong>Contacto:</strong> ${p.contacto_entrega}</div>` : ''}
+          </div>` : ''}
         </div>`:''}
         <div class="pedido-actions">
           ${canEdit?`<select onchange="cambiarEstado(${p.id},this.value)">
@@ -915,6 +946,27 @@ async function subirOC(id,input){
     if(!r.ok)throw new Error('Error al subir');
     const url=`${SUPA_URL}/storage/v1/object/public/app/${path}`;
     await guardarCampo(id,'oc_url',url);
+    status.textContent='✓ Subido';
+    setTimeout(()=>renderPedidos(),800);
+  }catch(e){status.style.color='var(--red)';status.textContent='Error: '+e.message;}
+}
+
+async function subirArchivo(id, tipo, input){
+  const file=input.files[0];if(!file)return;
+  const campo=tipo==='factura'?'factura_url':'remito_url';
+  const status=document.getElementById(`${tipo}-status-${id}`);
+  status.textContent='Subiendo...';
+  try{
+    const ext=file.name.split('.').pop();
+    const path=`${tipo}/${id}_${Date.now()}.${ext}`;
+    const r=await fetch(`${SUPA_URL}/storage/v1/object/app/${path}`,{
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+supaToken,'Content-Type':file.type,'x-upsert':'true'},
+      body:file
+    });
+    if(!r.ok)throw new Error('Error al subir');
+    const url=`${SUPA_URL}/storage/v1/object/public/app/${path}`;
+    await guardarCampo(id,campo,url);
     status.textContent='✓ Subido';
     setTimeout(()=>renderPedidos(),800);
   }catch(e){status.style.color='var(--red)';status.textContent='Error: '+e.message;}
@@ -1228,10 +1280,15 @@ async function cambiarRol(uid,rol){
 async function eliminarUsuario(uid, nombre){
   if(!confirm(`¿Seguro que querés eliminar a ${nombre}? Esta acción no se puede deshacer.`)) return;
   try{
-    await supa(`/rest/v1/profiles?id=eq.${uid}`,'DELETE');
+    const h={'apikey':SUPA_KEY,'Content-Type':'application/json','Prefer':'return=minimal'};
+    if(supaToken)h['Authorization']='Bearer '+supaToken;
+    const r=await fetch(SUPA_URL+`/rest/v1/profiles?id=eq.${uid}`,{method:'DELETE',headers:h});
+    if(!r.ok){const e=await r.text();throw new Error(e);}
+    alert(`✓ Usuario ${nombre} eliminado.`);
     renderAdmin();
   }catch(e){
-    alert('Error al eliminar el usuario. Intentá de nuevo.');
+    alert('Error al eliminar el usuario. Revisá los permisos RLS en Supabase.');
+    console.error(e);
   }
 }
 
