@@ -578,7 +578,7 @@ function updateStats(){
   const tm=pedFilt.reduce((a,p)=>a+totalMonto(p),0);
   const cli=new Set(pedFilt.map(p=>p.cliente)).size;
   const pend=pedFilt.filter(p=>p.cobro!=='pagado').length;
-  document.getElementById('st-ped').textContent=pedidos.length;
+  document.getElementById('st-ped').textContent=pedFilt.length;
   document.getElementById('st-monto').textContent=fmt(tm);
   document.getElementById('st-cli').textContent=cli;
   document.getElementById('st-pend').textContent=pend;
