@@ -481,29 +481,30 @@ async function logout(){
   try{await supa('/auth/v1/logout','POST');}catch(e){}
   supaToken=null;currentUser=null;currentProfile=null;pedidos=[];
   document.getElementById('app').style.display='none';
+  document.getElementById('no-provincia-screen').style.display='none';
   document.getElementById('login-screen').style.display='flex';
 }
 
 function showApp(){
   document.getElementById('login-screen').style.display='none';
-  document.getElementById('app').style.display='block';
-  document.getElementById('user-nombre').textContent=currentProfile.nombre;
-  document.getElementById('user-rol-badge').innerHTML=`<span class="rol-badge rol-${currentProfile.rol}">${currentProfile.rol}</span>`;
-  // Vendors see only their province; admin sees all by default
+  document.getElementById('no-provincia-screen').style.display='none';
+  // Check province BEFORE showing app
   if(currentProfile.rol === 'admin'){
     filtroProvinciaActual = null;
+    document.getElementById('app').style.display='block';
     document.getElementById('prov-filter-wrap').style.display='block';
   } else if(currentProfile.provincia){
     filtroProvinciaActual = currentProfile.provincia;
+    document.getElementById('app').style.display='block';
     document.getElementById('prov-filter-wrap').style.display='none';
   } else {
-    // Comercial without province assigned - show blocking screen
-    document.getElementById('prov-filter-wrap').style.display='none';
+    // Comercial without province - block access
     document.getElementById('app').style.display='none';
-    document.getElementById('login-screen').style.display='none';
     document.getElementById('no-provincia-screen').style.display='flex';
     return;
   }
+  document.getElementById('user-nombre').textContent=currentProfile.nombre;
+  document.getElementById('user-rol-badge').innerHTML=`<span class="rol-badge rol-${currentProfile.rol}">${currentProfile.rol}</span>`;
   buildTabs();
   loadPedidos();
 }
