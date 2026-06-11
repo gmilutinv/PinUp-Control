@@ -259,6 +259,7 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
     <div id="tab-resumen" style="display:none"></div>
     <div id="tab-proyeccion" style="display:none"></div>
     <div id="tab-admin" style="display:none"></div>
+    <div id="tab-produccion" style="display:none"></div>
   </div>
 </div>
 
@@ -540,6 +541,7 @@ function buildTabs(){
     {id:'resumen',label:'📋 Resumen',roles:['admin','comercial']},
     {id:'proyeccion',label:'📅 Proyección',roles:['admin','comercial']},
     {id:'admin',label:'⚙️ Admin',roles:['admin']},
+    {id:'produccion',label:'🏭 Producción',roles:['admin','produccion']},
   ];
   const visible=tabs.filter(t=>t.roles.includes(rol));
   document.getElementById('main-tabs').innerHTML=visible.map((t,i)=>`
@@ -561,6 +563,7 @@ function showTab(t){
   if(t==='resumen')renderResumen();
   if(t==='proyeccion')setTimeout(renderProyeccion, 50);
   if(t==='admin')renderAdmin();
+  if(t==='produccion')renderProduccion();
   if(t==='nuevo')renderNuevo();
 }
 
@@ -1199,6 +1202,269 @@ async function enviarSolicitud(){
     document.getElementById('s-nombre').value='';
     document.getElementById('s-email').value='';
   }catch(e){msg.style.display='block';msg.style.color='var(--red)';msg.textContent='Error al enviar. Intentá de nuevo.';}
+}
+
+
+// ===================== PRODUCCIÓN =====================
+
+const MATERIAS_PRIMAS = [
+  {id:'cloro',          nombre:'Cloro',                unidad:'L'},
+  {id:'agua_blanda',    nombre:'Agua Blanda',           unidad:'L'},
+  {id:'soda_50',        nombre:'Soda al 50%',           unidad:'L'},
+  {id:'alc_laurico',    nombre:'Alcohol Laurico 30%',   unidad:'L'},
+  {id:'uniquat',        nombre:'Uniquat',               unidad:'L'},
+  {id:'butil',          nombre:'Butil',                 unidad:'L'},
+  {id:'nonil',          nombre:'Nonil',                 unidad:'L'},
+  {id:'hostapur',       nombre:'Hostapur 30%',          unidad:'L'},
+  {id:'potasa_50',      nombre:'Potasa al 50%',         unidad:'L'},
+  {id:'lauril_70',      nombre:'Lauril 70%',            unidad:'L'},
+  {id:'isopropilico',   nombre:'Isopropílico',          unidad:'L'},
+  {id:'esencia',        nombre:'Esencia',               unidad:'L'},
+  {id:'color',          nombre:'Color',                 unidad:'L'},
+  {id:'deterg_neutro',  nombre:'Detergente Neutro',     unidad:'L'},
+  {id:'agua_desmin',    nombre:'Agua Desmineralizada',  unidad:'L'},
+  {id:'monoetanolamina',nombre:'Monoetanolamina',       unidad:'L'},
+];
+
+const INSUMOS_ENVASADO = [
+  {id:'bot_500',   nombre:'Botellas 500ml',     unidad:'unid'},
+  {id:'bot_1l',    nombre:'Botellas 1L',        unidad:'unid'},
+  {id:'bot_2l',    nombre:'Botellas 2L',        unidad:'unid'},
+  {id:'bot_4l',    nombre:'Botellas 4L',        unidad:'unid'},
+  {id:'tapas',     nombre:'Tapas',              unidad:'unid'},
+  {id:'etiquetas', nombre:'Etiquetas',          unidad:'unid'},
+  {id:'cajas',     nombre:'Cajas',              unidad:'unid'},
+];
+
+// Fórmulas: porcentaje sobre el total del lote (0.30 = 30%)
+const FORMULAS = {
+  'Lavandina':       {cloro:0.30, agua_blanda:0.70},
+  'Limpia Heladeras':{cloro:0.02, agua_blanda:0.98, soda_50:0.02},
+  'Limpia Vidrios':  {lauril_70:0.01, isopropilico:0.03, agua_desmin:0.94},
+  'Limpia Hornos':   {agua_blanda:0.89, butil:0.05, nonil:0.02, hostapur:0.02, potasa_50:0.02},
+  'Detergente':      {esencia:0.004, color:0.001, deterg_neutro:0.99},
+  'Limpia Pisos':    {agua_blanda:0.95, alc_laurico:0.03, uniquat:0.01, esencia:0.006, color:0.0001},
+};
+
+let stockMP = {};      // {mp_id: cantidad}
+let stockInsumos = {}; // {insumo_id: cantidad}
+
+async function loadStockProduccion(){
+  try{
+    const r = await supa('/rest/v1/stock_mp?select=*');
+    stockMP = {};
+    r.forEach(row => { stockMP[row.mp_id] = parseFloat(row.cantidad)||0; });
+  }catch(e){ stockMP = {}; }
+  try{
+    const r = await supa('/rest/v1/stock_insumos?select=*');
+    stockInsumos = {};
+    r.forEach(row => { stockInsumos[row.insumo_id] = parseFloat(row.cantidad)||0; });
+  }catch(e){ stockInsumos = {}; }
+}
+
+async function guardarStockMP(mp_id, cantidad){
+  const cant = parseFloat(cantidad)||0;
+  stockMP[mp_id] = cant;
+  try{
+    await fetch(`${SUPA_URL}/rest/v1/stock_mp?mp_id=eq.${mp_id}`, {
+      method:'DELETE',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+supaToken,'Prefer':'return=minimal'}
+    });
+    await supa('/rest/v1/stock_mp','POST',{mp_id, cantidad:cant});
+  }catch(e){ console.error('Error guardando stock MP',e); }
+}
+
+async function guardarStockInsumo(insumo_id, cantidad){
+  const cant = parseFloat(cantidad)||0;
+  stockInsumos[insumo_id] = cant;
+  try{
+    await fetch(`${SUPA_URL}/rest/v1/stock_insumos?insumo_id=eq.${insumo_id}`, {
+      method:'DELETE',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+supaToken,'Prefer':'return=minimal'}
+    });
+    await supa('/rest/v1/stock_insumos','POST',{insumo_id, cantidad:cant});
+  }catch(e){ console.error('Error guardando stock insumo',e); }
+}
+
+function calcularNecesario(){
+  const resultados = {};
+  let hayAlgo = false;
+  Object.entries(FORMULAS).forEach(([prod, formula]) => {
+    const litrosEl = document.getElementById('prod-litros-'+prod.replace(/\s/g,'_'));
+    const litros = parseFloat(litrosEl?.value)||0;
+    if(litros <= 0) return;
+    hayAlgo = true;
+    Object.entries(formula).forEach(([mp_id, pct]) => {
+      const necesario = litros * pct;
+      resultados[mp_id] = (resultados[mp_id]||0) + necesario;
+    });
+  });
+
+  const resEl = document.getElementById('calc-resultado');
+  if(!hayAlgo){ resEl.innerHTML='<p style="color:#888;font-size:13px">Ingresá la cantidad de litros a producir para ver el cálculo.</p>'; return; }
+
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:var(--cream)"><th style="padding:8px;text-align:left">Materia Prima</th><th style="padding:8px;text-align:right">Necesario</th><th style="padding:8px;text-align:right">En stock</th><th style="padding:8px;text-align:right">Diferencia</th></tr></thead><tbody>';
+  Object.entries(resultados).forEach(([mp_id, necesario]) => {
+    const mp = MATERIAS_PRIMAS.find(m=>m.id===mp_id);
+    if(!mp) return;
+    const enStock = stockMP[mp_id]||0;
+    const diff = enStock - necesario;
+    const color = diff >= 0 ? 'var(--green)' : 'var(--red)';
+    const signo = diff >= 0 ? '+' : '';
+    html += `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px">${mp.nombre}</td>
+      <td style="padding:8px;text-align:right">${necesario.toFixed(2)} ${mp.unidad}</td>
+      <td style="padding:8px;text-align:right">${enStock.toFixed(2)} ${mp.unidad}</td>
+      <td style="padding:8px;text-align:right;color:${color};font-weight:600">${signo}${diff.toFixed(2)} ${mp.unidad}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  resEl.innerHTML = html;
+}
+
+async function registrarProduccion(){
+  const lotes = {};
+  let hayAlgo = false;
+  Object.entries(FORMULAS).forEach(([prod, formula]) => {
+    const litrosEl = document.getElementById('prod-litros-'+prod.replace(/\s/g,'_'));
+    const litros = parseFloat(litrosEl?.value)||0;
+    if(litros > 0){ lotes[prod] = litros; hayAlgo = true; }
+  });
+  if(!hayAlgo){ alert('Ingresá al menos un producto a producir.'); return; }
+
+  // Check if enough stock
+  const necesario = {};
+  Object.entries(lotes).forEach(([prod, litros]) => {
+    Object.entries(FORMULAS[prod]).forEach(([mp_id, pct]) => {
+      necesario[mp_id] = (necesario[mp_id]||0) + litros * pct;
+    });
+  });
+  const faltante = Object.entries(necesario).filter(([mp_id, cant]) => (stockMP[mp_id]||0) < cant);
+  if(faltante.length > 0){
+    const msgs = faltante.map(([mp_id, cant]) => {
+      const mp = MATERIAS_PRIMAS.find(m=>m.id===mp_id);
+      return `${mp?.nombre||mp_id}: necesitás ${cant.toFixed(2)}, tenés ${(stockMP[mp_id]||0).toFixed(2)}`;
+    });
+    if(!confirm(`Stock insuficiente:\n${msgs.join('\n')}\n\n¿Registrar igual?`)) return;
+  }
+
+  // Discount stock
+  for(const [mp_id, cant] of Object.entries(necesario)){
+    const nuevo = Math.max(0, (stockMP[mp_id]||0) - cant);
+    await guardarStockMP(mp_id, nuevo);
+  }
+
+  // Clear form
+  Object.keys(FORMULAS).forEach(prod => {
+    const el = document.getElementById('prod-litros-'+prod.replace(/\s/g,'_'));
+    if(el) el.value = '';
+  });
+  alert('✓ Producción registrada. Stock actualizado.');
+  renderProduccion();
+}
+
+async function renderProduccion(){
+  await loadStockProduccion();
+  const tab = document.getElementById('tab-produccion');
+
+  const mpRows = MATERIAS_PRIMAS.map(mp => {
+    const stock = stockMP[mp.id]||0;
+    const low = stock < 20;
+    return `<tr style="border-bottom:1px solid var(--border)${low?';background:#fff5f5':''}">
+      <td style="padding:8px">${mp.nombre}</td>
+      <td style="padding:8px;text-align:right">
+        <input type="number" min="0" step="0.1" value="${stock}" 
+          style="width:90px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-size:12px;text-align:right"
+          onblur="guardarStockMP('${mp.id}',this.value).then(()=>renderProduccion())">
+      </td>
+      <td style="padding:8px;text-align:center">${mp.unidad}</td>
+      <td style="padding:8px;text-align:center">${low?'<span style="color:var(--red);font-weight:600">⚠ Bajo</span>':'<span style="color:var(--green)">✓</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  const insumosRows = INSUMOS_ENVASADO.map(ins => {
+    const stock = stockInsumos[ins.id]||0;
+    const low = stock < 100;
+    return `<tr style="border-bottom:1px solid var(--border)${low?';background:#fff5f5':''}">
+      <td style="padding:8px">${ins.nombre}</td>
+      <td style="padding:8px;text-align:right">
+        <input type="number" min="0" step="1" value="${stock}"
+          style="width:100px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-size:12px;text-align:right"
+          onblur="guardarStockInsumo('${ins.id}',this.value).then(()=>renderProduccion())">
+      </td>
+      <td style="padding:8px;text-align:center">${ins.unidad}</td>
+      <td style="padding:8px;text-align:center">${low?'<span style="color:var(--red);font-weight:600">⚠ Bajo</span>':'<span style="color:var(--green)">✓</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  const calcRows = Object.keys(FORMULAS).map(prod => `
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px;font-weight:500">${prod}</td>
+      <td style="padding:8px">
+        <input type="number" min="0" id="prod-litros-${prod.replace(/\s/g,'_')}" placeholder="0"
+          style="width:100px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px"
+          oninput="calcularNecesario()">
+      </td>
+      <td style="padding:8px;color:#888;font-size:12px">litros</td>
+    </tr>`).join('');
+
+  tab.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      
+      <div class="card">
+        <h2>🧪 Stock Materias Primas</h2>
+        <p style="font-size:12px;color:#888;margin-bottom:12px">Editá el valor y hacé click afuera para guardar. ⚠ = menos de 20L.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--cream)">
+            <th style="padding:8px;text-align:left">Materia Prima</th>
+            <th style="padding:8px;text-align:right">Stock</th>
+            <th style="padding:8px;text-align:center">Unidad</th>
+            <th style="padding:8px;text-align:center">Estado</th>
+          </tr></thead>
+          <tbody>${mpRows}</tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>📦 Stock Insumos de Envasado</h2>
+        <p style="font-size:12px;color:#888;margin-bottom:12px">Editá el valor y hacé click afuera para guardar. ⚠ = menos de 100 unidades.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--cream)">
+            <th style="padding:8px;text-align:left">Insumo</th>
+            <th style="padding:8px;text-align:right">Stock</th>
+            <th style="padding:8px;text-align:center">Unidad</th>
+            <th style="padding:8px;text-align:center">Estado</th>
+          </tr></thead>
+          <tbody>${insumosRows}</tbody>
+        </table>
+      </div>
+
+    </div>
+
+    <div class="card">
+      <h2>⚗️ Planificar Producción</h2>
+      <p style="font-size:12px;color:#888;margin-bottom:12px">Ingresá cuántos litros querés producir de cada producto. Se calcula automáticamente la materia prima necesaria.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:var(--cream)">
+              <th style="padding:8px;text-align:left">Producto</th>
+              <th style="padding:8px;text-align:left">Litros a producir</th>
+              <th></th>
+            </tr></thead>
+            <tbody>${calcRows}</tbody>
+          </table>
+          <div style="margin-top:16px">
+            <button class="btn btn-primary" onclick="registrarProduccion()">✓ Registrar Producción</button>
+            <span style="font-size:11px;color:#888;margin-left:8px">Descuenta del stock de materias primas</span>
+          </div>
+        </div>
+        <div>
+          <h3 style="font-size:14px;font-weight:600;margin-bottom:10px">Materias primas necesarias</h3>
+          <div id="calc-resultado"><p style="color:#888;font-size:13px">Ingresá la cantidad de litros a producir para ver el cálculo.</p></div>
+        </div>
+      </div>
+    </div>`;
 }
 
 async function renderAdmin(){
