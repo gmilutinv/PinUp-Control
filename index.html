@@ -550,7 +550,7 @@ function buildTabs(){
 }
 
 function showTab(t){
-  ['nuevo','pedidos','cobros','estadisticas','resumen','proyeccion','admin'].forEach(tab=>{
+  ['nuevo','pedidos','cobros','estadisticas','resumen','proyeccion','admin','produccion'].forEach(tab=>{
     const el=document.getElementById('tab-'+tab);
     if(el)el.style.display=tab===t?'block':'none';
   });
