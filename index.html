@@ -1075,14 +1075,14 @@ function renderStats(){
   pedsFilt.forEach(p=>{const m=p.fecha?p.fecha.substring(0,7):'';if(m){if(!mesesMap[m])mesesMap[m]=0;mesesMap[m]+=totalBultos(p);}});
   const mKeys=Object.keys(mesesMap).sort();
 
-  // provincia maps (always from ALL pedidos, not filtered)
+  // provincia maps (filtered by user's provinces)
   const provBultosMap={};
-  pedidos.forEach(p=>{const pv=p.provincia||'Sin provincia';if(!provBultosMap[pv])provBultosMap[pv]=0;provBultosMap[pv]+=totalBultos(p);});
+  pedidosProv.forEach(p=>{const pv=p.provincia||'Sin provincia';if(!provBultosMap[pv])provBultosMap[pv]=0;provBultosMap[pv]+=totalBultos(p);});
   const provMontoMap={};
-  pedidos.forEach(p=>{const pv=p.provincia||'Sin provincia';if(!provMontoMap[pv])provMontoMap[pv]=0;provMontoMap[pv]+=totalMonto(p);});
-  // provincia x cliente table (all pedidos)
+  pedidosProv.forEach(p=>{const pv=p.provincia||'Sin provincia';if(!provMontoMap[pv])provMontoMap[pv]=0;provMontoMap[pv]+=totalMonto(p);});
+  // provincia x cliente table (filtered)
   const provCliMap={};
-  pedidos.forEach(p=>{
+  pedidosProv.forEach(p=>{
     const pv=p.provincia||'Sin provincia';
     if(!provCliMap[pv])provCliMap[pv]={};
     if(!provCliMap[pv][p.cliente])provCliMap[pv][p.cliente]={bultos:0,monto:0};
