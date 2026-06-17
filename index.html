@@ -494,8 +494,15 @@ function showApp(){
     filtroProvinciaActual = null;
     document.getElementById('app').style.display='block';
     document.getElementById('prov-filter-wrap').style.display='block';
-  } else if(currentProfile.provincia){
-    filtroProvinciaActual = currentProfile.provincia;
+  } else if(currentProfile.provincias?.length || currentProfile.provincia){
+    // Support both new array and legacy single provincia
+    filtroProvinciaActual = currentProfile.provincias?.length
+      ? currentProfile.provincias[0]
+      : currentProfile.provincia;
+    // Store array for multi-province filtering
+    currentProfile._provinciasArr = currentProfile.provincias?.length
+      ? currentProfile.provincias
+      : currentProfile.provincia ? [currentProfile.provincia] : [];
     document.getElementById('app').style.display='block';
     document.getElementById('prov-filter-wrap').style.display='none';
   } else {
@@ -577,7 +584,8 @@ async function loadPedidos(){
 }
 
 function updateStats(){
-  const pedFilt=filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
+  const _provArr=currentProfile._provinciasArr;
+  const pedFilt=_provArr?.length?pedidos.filter(p=>_provArr.includes(p.provincia)):filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
   const tm=pedFilt.reduce((a,p)=>a+totalMonto(p),0);
   const cli=new Set(pedFilt.map(p=>p.cliente)).size;
   const pend=pedFilt.filter(p=>p.cobro!=='pagado').length;
@@ -767,9 +775,8 @@ function renderPedidos(){
   if(!pedidos.length){list.innerHTML='<div class="empty">No hay pedidos.</div>';return;}
   const canEdit=['admin','comercial'].includes(currentProfile.rol);
   // Apply global provincia filter
-  const pedidosFiltrados = filtroProvinciaActual
-    ? pedidos.filter(p=>p.provincia===filtroProvinciaActual)
-    : pedidos;
+  const _pArr=currentProfile._provinciasArr;
+  const pedidosFiltrados = _pArr?.length ? pedidos.filter(p=>_pArr.includes(p.provincia)) : filtroProvinciaActual ? pedidos.filter(p=>p.provincia===filtroProvinciaActual) : pedidos;
   if(!pedidosFiltrados.length){list.innerHTML='<div class="empty">No hay pedidos para esta provincia.</div>';return;}
   list.innerHTML=pedidosFiltrados.map((p,idx)=>{
     const tb=totalBultos(p),tm=totalMonto(p);
@@ -1031,7 +1038,8 @@ async function guardarEdicion(){
 }
 
 function renderCobros(){
-  const pedidosProv=filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
+  const _pAx=currentProfile._provinciasArr;
+  const pedidosProv=_pAx?.length?pedidos.filter(p=>_pAx.includes(p.provincia)):filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
   const sorted=[...pedidosProv].sort((a,b)=>(a.fecha_cobro||'9999')>(b.fecha_cobro||'9999')?1:-1);
   const canEdit=['admin','comercial'].includes(currentProfile.rol);
   document.getElementById('tab-cobros').innerHTML=`<div class="card"><h2>Estado de cobros</h2>${
@@ -1048,7 +1056,8 @@ function renderCobros(){
 }
 
 function renderStats(){
-  const pedidosProv=filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
+  const _pAx=currentProfile._provinciasArr;
+  const pedidosProv=_pAx?.length?pedidos.filter(p=>_pAx.includes(p.provincia)):filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
   const provincias=[...new Set(pedidosProv.map(p=>p.provincia||'Sin provincia'))].sort();
   const provFilter=document.getElementById('stats-prov-filter')?.value||'';
   const pedsFilt=provFilter?pedidosProv.filter(p=>(p.provincia||'Sin provincia')===provFilter):pedidosProv;
@@ -1127,7 +1136,8 @@ function renderStats(){
 
 function renderResumen(){
   // totals now computed from pedsFilt above
-  const pedidosProv=filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
+  const _pA2=currentProfile._provinciasArr;
+  const pedidosProv=_pA2?.length?pedidos.filter(p=>_pA2.includes(p.provincia)):filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
   const provincias=[...new Set(pedidosProv.map(p=>p.provincia||'Sin provincia').filter(Boolean))].sort();
   const provFilter=document.getElementById('res-prov-filter')?.value||'';
   const pedsFilt=provFilter?pedidosProv.filter(p=>(p.provincia||'Sin provincia')===provFilter):pedidosProv;
@@ -1752,7 +1762,7 @@ async function renderAdmin(){
       <h2>Usuarios activos</h2>
       <p style="font-size:12px;color:#888;margin-bottom:14px">Podés cambiar el rol de cada usuario acá.</p>
       ${users.map(u=>`<div class="admin-user-card">
-        <div class="info"><div class="nombre">${u.nombre||'Sin nombre'}</div><div class="email" style="font-size:11px;color:#888">${u.provincia?'📍 '+u.provincia:'Sin provincia'}</div></div>
+        <div class="info"><div class="nombre">${u.nombre||'Sin nombre'}</div><div class="email" style="font-size:11px;color:#888">${(u.provincias?.length?u.provincias:u.provincia?[u.provincia]:[]).map(p=>'📍'+p).join(' ')|| 'Sin provincia'}</div></div>
         <span class="rol-badge rol-${u.rol}">${u.rol}</span>
         <select onchange="cambiarRol('${u.id}',this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px">
           <option value="admin" ${u.rol==='admin'?'selected':''}>Admin</option>
@@ -1760,10 +1770,12 @@ async function renderAdmin(){
           <option value="produccion" ${u.rol==='produccion'?'selected':''}>Producción</option>
           <option value="compras" ${u.rol==='compras'?'selected':''}>Compras</option>
         </select>
-        <select onchange="cambiarProvincia('${u.id}',this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px">
-          <option value="">Sin provincia</option>
-          ${PROVINCIAS_AR.map(p=>`<option value="${p}" ${u.provincia===p?'selected':''}>${p}</option>`).join('')}
-        </select>
+        <div style="display:inline-block;position:relative">
+          <button onclick="toggleProvSelector('${u.id}')" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;background:white;cursor:pointer">🗺 Provincias ▾</button>
+          <div id="prov-sel-${u.id}" style="display:none;position:absolute;left:0;top:110%;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:300;padding:8px;min-width:200px;max-height:220px;overflow-y:auto">
+            ${PROVINCIAS_AR.map(p=>`<label style="display:flex;align-items:center;gap:6px;padding:3px 4px;cursor:pointer;font-size:12px"><input type="checkbox" value="${p}" ${(u.provincias||[]).includes(p)||(u.provincia===p)?'checked':''} onchange="toggleProvincia('${u.id}',this)"> ${p}</label>`).join('')}
+          </div>
+        </div>
         ${u.id!==currentUser.id?`<button class="btn-sm btn-danger" onclick="eliminarUsuario('${u.id}','${(u.nombre||'este usuario').replace(/'/g,'')}')" style="margin-left:4px">🗑 Eliminar</button>`:''}
       </div>`).join('')}
     </div>`;
@@ -1793,8 +1805,26 @@ async function rechazarSolicitud(id){
   renderAdmin();
 }
 
+function toggleProvSelector(uid){
+  const el = document.getElementById('prov-sel-'+uid);
+  if(!el) return;
+  // close all others first
+  document.querySelectorAll('[id^="prov-sel-"]').forEach(d=>{ if(d.id!=='prov-sel-'+uid) d.style.display='none'; });
+  el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+async function toggleProvincia(uid, checkbox){
+  // gather all checked for this user
+  const container = document.getElementById('prov-sel-'+uid);
+  const checked = [...container.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.value);
+  await supa(`/rest/v1/profiles?id=eq.${uid}`,'PATCH',{provincias:checked, provincia: checked[0]||null});
+  alert(`✓ Provincias actualizadas: ${checked.length ? checked.join(', ') : 'ninguna'}`);
+  renderAdmin();
+}
+
+// kept for backward compat
 async function cambiarProvincia(uid, provincia){
-  await supa(`/rest/v1/profiles?id=eq.${uid}`,'PATCH',{provincia:provincia||null});
+  await supa(`/rest/v1/profiles?id=eq.${uid}`,'PATCH',{provincia:provincia||null, provincias: provincia?[provincia]:[]});
   alert(provincia ? `✓ Provincia asignada: ${provincia}` : '✓ Provincia removida.');
 }
 
@@ -1822,7 +1852,8 @@ function renderProyeccion(){
   const mesesMap={};
   const pendientes=[];
 
-  const pedidosProv=filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
+  const _pAx=currentProfile._provinciasArr;
+  const pedidosProv=_pAx?.length?pedidos.filter(p=>_pAx.includes(p.provincia)):filtroProvinciaActual?pedidos.filter(p=>p.provincia===filtroProvinciaActual):pedidos;
   pedidosProv.forEach(p=>{
     if(p.cobro==='pagado') return;
     // dias_cobro puede venir como undefined, null o 0 de Supabase
