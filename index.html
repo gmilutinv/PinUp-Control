@@ -259,7 +259,7 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
     <div id="tab-resumen" style="display:none"></div>
     <div id="tab-proyeccion" style="display:none"></div>
     <div id="tab-admin" style="display:none"></div>
-    <div id="tab-stock" style="display:none"></div>
+    <div id="tab-produccion" style="display:none"></div>
   </div>
 </div>
 
@@ -490,10 +490,12 @@ function showApp(){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('no-provincia-screen').style.display='none';
   // Check province BEFORE showing app
-  if(currentProfile.rol === 'admin'){
+  const rolSinProvincia = ['admin','produccion','compras'];
+  if(rolSinProvincia.includes(currentProfile.rol)){
     filtroProvinciaActual = null;
+    currentProfile._provinciasArr = [];
     document.getElementById('app').style.display='block';
-    document.getElementById('prov-filter-wrap').style.display='block';
+    document.getElementById('prov-filter-wrap').style.display=currentProfile.rol==='admin'?'block':'none';
   } else if(currentProfile.provincias?.length || currentProfile.provincia){
     // Support both new array and legacy single provincia
     filtroProvinciaActual = currentProfile.provincias?.length
@@ -548,7 +550,7 @@ function buildTabs(){
     {id:'resumen',label:'📋 Resumen',roles:['admin','comercial']},
     {id:'proyeccion',label:'📅 Proyección',roles:['admin','comercial']},
     {id:'admin',label:'⚙️ Admin',roles:['admin']},
-    {id:'stock',label:'📦 Stock',roles:['admin']},
+    {id:'produccion',label:'🏭 Producción',roles:['admin','produccion']},
   ];
   const visible=tabs.filter(t=>t.roles.includes(rol));
   document.getElementById('main-tabs').innerHTML=visible.map((t,i)=>`
@@ -557,7 +559,7 @@ function buildTabs(){
 }
 
 function showTab(t){
-  ['nuevo','pedidos','cobros','estadisticas','resumen','proyeccion','admin','stock'].forEach(tab=>{
+  ['nuevo','pedidos','cobros','estadisticas','resumen','proyeccion','admin','produccion'].forEach(tab=>{
     const el=document.getElementById('tab-'+tab);
     if(el)el.style.display=tab===t?'block':'none';
   });
@@ -570,7 +572,7 @@ function showTab(t){
   if(t==='resumen')renderResumen();
   if(t==='proyeccion')setTimeout(renderProyeccion, 50);
   if(t==='admin')renderAdmin();
-  if(t==='stock')renderStock();
+  if(t==='produccion')renderProduccion();
   if(t==='nuevo')renderNuevo();
 }
 
@@ -590,7 +592,11 @@ function updateStats(){
   const cli=new Set(pedFilt.map(p=>p.cliente)).size;
   const pend=pedFilt.filter(p=>p.cobro!=='pagado').length;
   document.getElementById('st-ped').textContent=pedFilt.length;
-  document.getElementById('st-monto').textContent=fmt(tm);
+  const montoEl=document.getElementById('st-monto');
+  if(montoEl){
+    montoEl.textContent=currentProfile.rol==='produccion'?'—':fmt(tm);
+    montoEl.closest?.('.stat')?.style && (montoEl.closest('.stat').style.display=currentProfile.rol==='produccion'?'none':'');
+  }
   document.getElementById('st-cli').textContent=cli;
   document.getElementById('st-pend').textContent=pend;
 }
@@ -786,31 +792,28 @@ function renderPedidos(){
       const pp=getProd(pr.pid);if(!pp)return'';
       const precio=pr.precio||getPrecioUnidad(p.cliente,pr.pid);
       const subtotal=pr.bonificado?0:pr.bultos*pp.uxb*precio;
-      const showPrices = currentProfile.rol!=='produccion';
       return`<tr ${pr.bonificado?'style="color:var(--amber)"':''}>
         <td>${pp.nombre}${pr.bonificado?' <span style="font-size:9px;background:var(--amber-l);color:var(--amber);padding:1px 4px;border-radius:3px">BONIF.</span>':''}</td>
         <td>${pp.pres}</td><td>${pr.bultos}</td><td>${pr.bultos*pp.uxb}</td>
-        ${showPrices?`<td>${pr.bonificado?'$0':fmt(precio)}</td><td>${pr.bonificado?'$0':fmt(subtotal)}</td>`:`<td>—</td><td>—</td>`}
+        <td>${pr.bonificado?'$0':fmt(precio)}</td>
+        <td>${pr.bonificado?'$0':fmt(subtotal)}</td>
       </tr>`;
     }).join('');
     const editBtns=canEdit?`
       <button class="btn-sm btn-blue" onclick="abrirEdicion(${p.id})">✏️ Editar</button>
       <button class="btn-sm btn-danger" onclick="eliminarPedido(${p.id})">Eliminar</button>`:'';
-    const pdfBtns=`
-      <button class="btn-sm" style="background:var(--cream);border:1px solid var(--border)" onclick="exportarPDF(${p.id},true)">🖨 PDF con precios</button>
-      <button class="btn-sm" style="background:var(--cream);border:1px solid var(--border)" onclick="exportarPDF(${p.id},false)">🖨 PDF sin precios</button>`;
     return`<div class="pedido-card">
       <div class="pedido-header" onclick="tog(${p.id})">
         <div class="pedido-num">P${idx+1}</div>
         <div class="pedido-info"><div class="cliente">${p.cliente}</div><div class="fecha">${p.fecha} · ${tb} bultos${p.provincia ? ' · <span style="color:var(--blue);font-weight:600">'+p.provincia+'</span>' : ''}</div></div>
         <span class="badge ${bc}">${bt}</span>
         <span class="badge ${p.cobro==='pagado'?'badge-pagado':'badge-nopagado'}" style="margin-left:4px">${p.cobro==='pagado'?'Cobrado':'Sin cobrar'}</span>
-        ${currentProfile.rol!=='produccion'?`<strong style="font-family:Georgia,serif;font-size:16px;color:var(--green);margin-left:6px">${fmt(tm)}</strong>`:``}
+        <strong style="font-family:Georgia,serif;font-size:16px;color:var(--green);margin-left:6px">${fmt(tm)}</strong>
         <span class="chevron" id="chev-${p.id}">▼</span>
       </div>
       <div class="pedido-body" id="body-${p.id}">
-        <table><thead><tr><th>Producto</th><th>Pres.</th><th>Bultos</th><th>Unidades</th>${currentProfile.rol!=='produccion'?'<th>Precio/u</th><th>Subtotal</th>':''}</tr></thead><tbody>${rows}</tbody></table>
-        ${currentProfile.rol!=='produccion'?`<div style="text-align:right;padding:8px 0;border-top:1px solid var(--border);margin-top:4px">
+        <table><thead><tr><th>Producto</th><th>Pres.</th><th>Bultos</th><th>Unidades</th><th>Precio/u</th><th>Subtotal</th></tr></thead><tbody>${rows}</tbody></table>
+        <div style="text-align:right;padding:8px 0;border-top:1px solid var(--border);margin-top:4px">
           <div style="font-size:12px;color:var(--mid);margin-bottom:4px;display:flex;align-items:center;justify-content:flex-end;gap:8px">
             <input type="checkbox" id="iva-${p.id}" ${p.con_iva?'checked':''} onchange="toggleIva(${p.id})">
             <label for="iva-${p.id}" style="cursor:pointer;font-weight:500;font-size:12px">Incluir IVA 21%</label>
@@ -818,7 +821,7 @@ function renderPedidos(){
           <div style="font-size:12px;color:var(--mid)">Subtotal s/IVA: <strong>${fmt(totalMontoNeto(p))}</strong></div>
           <div id="iva-row-${p.id}" style="font-size:12px;color:var(--mid);display:${p.con_iva?'block':'none'}">IVA 21%: <strong>${fmt(totalMontoNeto(p)*0.21)}</strong></div>
           <div style="font-family:Georgia,serif;font-size:20px;color:var(--green)">TOTAL: <span id="total-final-${p.id}">${fmt(tm)}</span></div>
-        </div>`:''}
+        </div>
         ${p.notas?`<p style="font-size:11px;color:#888;margin-top:6px">📝 ${p.notas}</p>`:''}
         ${(p.dias_cobro!==null&&p.dias_cobro!==undefined)?`<p style="font-size:11px;color:var(--blue);margin-top:4px">⏱ ${p.dias_cobro} días · vence ${p.fecha_cobro||calcFechaCobro(p.fecha,p.dias_cobro)||'—'}</p>`:''}
         ${canEdit?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
@@ -884,88 +887,10 @@ function renderPedidos(){
           </select>`:''}
           ${canEdit?`<button class="btn-sm ${p.cobro==='pagado'?'btn-danger':'btn-success'}" onclick="toggleCobro(${p.id})">${p.cobro==='pagado'?'Marcar sin cobrar':'✓ Marcar cobrado'}</button>`:''}
           ${editBtns}
-          ${pdfBtns}
         </div>
       </div>
     </div>`;
   }).join('');
-}
-
-
-function exportarPDF(pedidoId, conPrecios){
-  const p = pedidos.find(x=>x.id===pedidoId);
-  if(!p) return;
-  const tb = totalBultos(p);
-  const tm = totalMonto(p);
-
-  const prodRows = (p.productos||[]).map(pr=>{
-    const pp = getProd(pr.pid); if(!pp) return '';
-    const precio = pr.precio||getPrecioUnidad(p.cliente,pr.pid);
-    const subtotal = pr.bonificado?0:pr.bultos*pp.uxb*precio;
-    const precioCol = conPrecios ? `<td style="padding:6px 10px;text-align:right;border:1px solid #ddd">${pr.bonificado?'$0':fmt(precio)}</td><td style="padding:6px 10px;text-align:right;border:1px solid #ddd">${pr.bonificado?'$0':fmt(subtotal)}</td>` : '';
-    return `<tr style="${pr.bonificado?'color:#b45309':''}">
-      <td style="padding:6px 10px;border:1px solid #ddd">${pp.nombre}${pr.bonificado?' (BONIF.)':''}</td>
-      <td style="padding:6px 10px;border:1px solid #ddd">${pp.pres}</td>
-      <td style="padding:6px 10px;text-align:center;border:1px solid #ddd">${pr.bultos}</td>
-      <td style="padding:6px 10px;text-align:center;border:1px solid #ddd">${pr.bultos*pp.uxb}</td>
-      ${precioCol}
-    </tr>`;
-  }).join('');
-
-  const totalRow = conPrecios ? `
-    <tr><td colspan="4" style="padding:8px 10px;text-align:right;border:1px solid #ddd;font-weight:600">Subtotal s/IVA:</td><td colspan="2" style="padding:8px 10px;text-align:right;border:1px solid #ddd;font-weight:600">${fmt(totalMontoNeto(p))}</td></tr>
-    ${p.con_iva?`<tr><td colspan="4" style="padding:4px 10px;text-align:right;border:1px solid #ddd">IVA 21%:</td><td colspan="2" style="padding:4px 10px;text-align:right;border:1px solid #ddd">${fmt(totalMontoNeto(p)*0.21)}</td></tr>`:''}
-    <tr style="background:#f0fdf4"><td colspan="4" style="padding:10px;text-align:right;border:1px solid #ddd;font-size:16px;font-weight:700">TOTAL:</td><td colspan="2" style="padding:10px;text-align:right;border:1px solid #ddd;font-size:16px;font-weight:700;color:#16a34a">${fmt(tm)}</td></tr>
-  ` : '';
-
-  const headerCols = conPrecios
-    ? '<th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd">Precio/u</th><th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd">Subtotal</th>'
-    : '';
-
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-  <title>Pedido ${p.cliente} - ${p.fecha}</title>
-  <style>body{font-family:Arial,sans-serif;margin:40px;color:#222;font-size:13px}h1{font-size:20px;margin-bottom:4px}table{border-collapse:collapse;width:100%}@media print{button{display:none}}</style>
-  </head><body>
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
-    <div>
-      <h1 style="color:#b91c1c">Pin Up Clean</h1>
-      <div style="color:#888;font-size:12px">INAP SRL — Godoy Cruz, Mendoza</div>
-    </div>
-    <div style="text-align:right">
-      <div style="font-size:18px;font-weight:700">Pedido</div>
-      <div style="color:#888">${p.fecha}</div>
-    </div>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;padding:16px;background:#fafafa;border-radius:6px;border:1px solid #e5e7eb">
-    <div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Cliente</div><div style="font-weight:700;font-size:15px">${p.cliente}</div></div>
-    <div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Provincia</div><div>${p.provincia||'—'}</div></div>
-    ${p.direccion_entrega?`<div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Dirección entrega</div><div>${p.direccion_entrega}</div></div>`:''}
-    ${p.contacto_entrega?`<div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Contacto</div><div>${p.contacto_entrega}</div></div>`:''}
-    ${p.notas?`<div style="grid-column:1/-1"><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Notas</div><div>${p.notas}</div></div>`:''}
-  </div>
-  <table>
-    <thead><tr>
-      <th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:left">Producto</th>
-      <th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:left">Pres.</th>
-      <th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:center">Bultos</th>
-      <th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:center">Unidades</th>
-      ${headerCols}
-    </tr></thead>
-    <tbody>${prodRows}</tbody>
-    ${totalRow?`<tfoot>${totalRow}</tfoot>`:''}
-  </table>
-  <div style="margin-top:32px;display:flex;justify-content:space-between;color:#888;font-size:11px">
-    <div>Total: ${tb} bultos</div>
-    <div>Generado por pinupsys.com · ${new Date().toLocaleDateString('es-AR')}</div>
-  </div>
-  <div style="margin-top:20px;text-align:center">
-    <button onclick="window.print()" style="padding:10px 24px;background:#b91c1c;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨 Imprimir / Guardar PDF</button>
-  </div>
-  </body></html>`;
-
-  const win = window.open('','_blank');
-  win.document.write(html);
-  win.document.close();
 }
 
 function tog(id){
@@ -1296,10 +1221,96 @@ async function enviarSolicitud(){
 }
 
 
+// ===================== PRODUCCIÓN =====================
 
-let stockTerminado = {}; // {prod_id: cajas}
+const MATERIAS_PRIMAS = [
+  {id:'cloro',          nombre:'Cloro',                unidad:'L'},
+  {id:'agua_blanda',    nombre:'Agua Blanda',           unidad:'L'},
+  {id:'soda_50',        nombre:'Soda al 50%',           unidad:'L'},
+  {id:'alc_laurico',    nombre:'Alcohol Laurico 30%',   unidad:'L'},
+  {id:'uniquat',        nombre:'Uniquat',               unidad:'L'},
+  {id:'butil',          nombre:'Butil',                 unidad:'L'},
+  {id:'nonil',          nombre:'Nonil',                 unidad:'L'},
+  {id:'hostapur',       nombre:'Hostapur 30%',          unidad:'L'},
+  {id:'potasa_50',      nombre:'Potasa al 50%',         unidad:'L'},
+  {id:'lauril_70',      nombre:'Lauril 70%',            unidad:'L'},
+  {id:'isopropilico',   nombre:'Isopropílico',          unidad:'L'},
+  {id:'esencia',        nombre:'Esencia',               unidad:'L'},
+  {id:'color',          nombre:'Color',                 unidad:'L'},
+  {id:'deterg_neutro',  nombre:'Detergente Neutro',     unidad:'L'},
+  {id:'agua_desmin',    nombre:'Agua Desmineralizada',  unidad:'L'},
+  {id:'monoetanolamina',nombre:'Monoetanolamina',       unidad:'L'},
+];
 
-async function loadStock(){
+const INSUMOS_ENVASADO = [
+  {id:'bot_lavandina_1l',    nombre:'Botellas Lavandina 1L',              unidad:'unid'},
+  {id:'bot_lavandina_2l',    nombre:'Botellas Lavandina 2L',              unidad:'unid'},
+  {id:'bot_hornos_500ml',    nombre:'Botellas Desengrasante Hornos 500ml',unidad:'unid'},
+  {id:'bot_vidrios_500ml',   nombre:'Botellas Limpiavidrios 500ml',       unidad:'unid'},
+  {id:'bot_pisos_2l',        nombre:'Botellas Limpiador Pisos 2L',        unidad:'unid'},
+  {id:'bot_pisos_900ml',     nombre:'Botellas Limpiador Pisos 900ml',     unidad:'unid'},
+  {id:'bot_detergente_500ml',nombre:'Botellas Detergente 500ml',          unidad:'unid'},
+  {id:'bot_detergente_300ml',nombre:'Botellas Detergente 300ml',          unidad:'unid'},
+  {id:'bot_heladeras_500ml', nombre:'Botellas Limpia Heladeras 500ml',    unidad:'unid'},
+  {id:'tapas',               nombre:'Tapas (todas)',                      unidad:'unid'},
+  {id:'etiquetas',           nombre:'Etiquetas (todas)',                  unidad:'unid'},
+  {id:'cajas',               nombre:'Cajas',                             unidad:'unid'},
+];
+
+// Fórmulas: porcentaje sobre el total del lote (0.30 = 30%)
+const FORMULAS = {
+  'Lavandina':       {cloro:0.30, agua_blanda:0.70},
+  'Limpia Heladeras':{cloro:0.02, agua_blanda:0.98, soda_50:0.02},
+  'Limpia Vidrios':  {lauril_70:0.01, isopropilico:0.03, agua_desmin:0.94},
+  'Limpia Hornos':   {agua_blanda:0.89, butil:0.05, nonil:0.02, hostapur:0.02, potasa_50:0.02},
+  'Detergente':      {esencia:0.004, color:0.001, deterg_neutro:0.99},
+  'Limpia Pisos':    {agua_blanda:0.95, alc_laurico:0.03, uniquat:0.01, esencia:0.006, color:0.0001},
+};
+
+let stockMP = {};       // {mp_id: cantidad en litros}
+let stockInsumos = {};  // {insumo_id: cantidad en unidades}
+let stockGranel = {};   // {prod_key: litros a granel}
+let stockBotellas = {}; // {prod_id: botellas llenas}
+let stockTerminado = {};// {prod_id: cajas listas}
+
+// Mapeo producto formula → presentaciones
+const PROD_FORMULA_MAP = {
+  'Lavandina':                ['2','3'],
+  'Limpia Heladeras':         ['10'],
+  'Limpia Vidrios':           ['5'],
+  'Limpia Hornos':            ['4'],
+  'Detergente':               ['8','9'],
+  'Limpia Pisos':             ['6','7'],
+};
+
+// Mililitros por botella por prod_id
+const ML_POR_BOTELLA = {2:1000,3:2000,4:500,5:500,6:2000,7:900,8:500,9:300,10:500};
+// Botellas por caja por prod_id  
+const BOT_POR_CAJA = {2:12,3:6,4:16,5:12,6:6,7:9,8:12,9:20,10:12};
+// Insumo botella por prod_id
+const INSUMO_BOTELLA = {2:'bot_lavandina_1l',3:'bot_lavandina_2l',4:'bot_hornos_500ml',5:'bot_vidrios_500ml',6:'bot_pisos_2l',7:'bot_pisos_900ml',8:'bot_detergente_500ml',9:'bot_detergente_300ml',10:'bot_heladeras_500ml'};
+
+async function loadStockProduccion(){
+  try{
+    const r = await supa('/rest/v1/stock_mp?select=*');
+    stockMP = {};
+    r.forEach(row => { stockMP[row.mp_id] = parseFloat(row.cantidad)||0; });
+  }catch(e){ stockMP = {}; }
+  try{
+    const r = await supa('/rest/v1/stock_insumos?select=*');
+    stockInsumos = {};
+    r.forEach(row => { stockInsumos[row.insumo_id] = parseFloat(row.cantidad)||0; });
+  }catch(e){ stockInsumos = {}; }
+  try{
+    const r = await supa('/rest/v1/stock_granel?select=*');
+    stockGranel = {};
+    r.forEach(row => { stockGranel[row.prod_key] = parseFloat(row.cantidad)||0; });
+  }catch(e){ stockGranel = {}; }
+  try{
+    const r = await supa('/rest/v1/stock_botellas?select=*');
+    stockBotellas = {};
+    r.forEach(row => { stockBotellas[row.prod_id] = parseFloat(row.cantidad)||0; });
+  }catch(e){ stockBotellas = {}; }
   try{
     const r = await supa('/rest/v1/stock_terminado?select=*');
     stockTerminado = {};
@@ -1307,64 +1318,430 @@ async function loadStock(){
   }catch(e){ stockTerminado = {}; }
 }
 
+async function guardarStockGranel(prod_key, cantidad){
+  const cant = parseFloat(cantidad)||0;
+  stockGranel[prod_key] = cant;
+  try{
+    await fetch(`${SUPA_URL}/rest/v1/stock_granel?prod_key=eq.${prod_key}`,{method:'DELETE',headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+supaToken,'Prefer':'return=minimal'}});
+    await supa('/rest/v1/stock_granel','POST',{prod_key, cantidad:cant});
+  }catch(e){ console.error('Error guardando granel',e); }
+}
+
+async function guardarStockBotellas(prod_id, cantidad){
+  const cant = parseFloat(cantidad)||0;
+  stockBotellas[prod_id] = cant;
+  try{
+    await fetch(`${SUPA_URL}/rest/v1/stock_botellas?prod_id=eq.${prod_id}`,{method:'DELETE',headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+supaToken,'Prefer':'return=minimal'}});
+    await supa('/rest/v1/stock_botellas','POST',{prod_id, cantidad:cant});
+  }catch(e){ console.error('Error guardando botellas',e); }
+}
+
 async function guardarStockTerminado(prod_id, cantidad){
   const cant = parseFloat(cantidad)||0;
   stockTerminado[prod_id] = cant;
   try{
-    await fetch(`${SUPA_URL}/rest/v1/stock_terminado?prod_id=eq.${prod_id}`,{
+    await fetch(`${SUPA_URL}/rest/v1/stock_terminado?prod_id=eq.${prod_id}`,{method:'DELETE',headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+supaToken,'Prefer':'return=minimal'}});
+    await supa('/rest/v1/stock_terminado','POST',{prod_id, cantidad:cant});
+  }catch(e){ console.error('Error guardando terminado',e); }
+}
+
+async function guardarStockMP(mp_id, cantidad){
+  const cant = parseFloat(cantidad)||0;
+  stockMP[mp_id] = cant;
+  try{
+    await fetch(`${SUPA_URL}/rest/v1/stock_mp?mp_id=eq.${mp_id}`, {
       method:'DELETE',
       headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+supaToken,'Prefer':'return=minimal'}
     });
-    await supa('/rest/v1/stock_terminado','POST',{prod_id:String(prod_id), cantidad:cant});
-  }catch(e){ console.error('Error guardando stock',e); }
+    await supa('/rest/v1/stock_mp','POST',{mp_id, cantidad:cant});
+  }catch(e){ console.error('Error guardando stock MP',e); }
 }
 
-async function renderStock(){
-  await loadStock();
-  const tab = document.getElementById('tab-stock');
-  const isAdmin = currentProfile.rol === 'admin';
+async function guardarStockInsumo(insumo_id, cantidad){
+  const cant = parseFloat(cantidad)||0;
+  stockInsumos[insumo_id] = cant;
+  try{
+    await fetch(`${SUPA_URL}/rest/v1/stock_insumos?insumo_id=eq.${insumo_id}`, {
+      method:'DELETE',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+supaToken,'Prefer':'return=minimal'}
+    });
+    await supa('/rest/v1/stock_insumos','POST',{insumo_id, cantidad:cant});
+  }catch(e){ console.error('Error guardando stock insumo',e); }
+}
 
-  const rows = PRODS.map(p => {
-    const cajas = stockTerminado[p.id]||0;
-    const low = cajas < 5;
-    const botPorCaja = {2:12,3:6,4:16,5:12,6:6,7:9,8:12,9:20,10:12}[p.id]||0;
-    const totalBot = cajas * botPorCaja;
+function calcularNecesario(){
+  const resultados = {};
+  let hayAlgo = false;
+  Object.entries(FORMULAS).forEach(([prod, formula]) => {
+    const litrosEl = document.getElementById('prod-litros-'+prod.replace(/\s/g,'_'));
+    const litros = parseFloat(litrosEl?.value)||0;
+    if(litros <= 0) return;
+    hayAlgo = true;
+    Object.entries(formula).forEach(([mp_id, pct]) => {
+      const necesario = litros * pct;
+      resultados[mp_id] = (resultados[mp_id]||0) + necesario;
+    });
+  });
+
+  const resEl = document.getElementById('calc-resultado');
+  if(!hayAlgo){ resEl.innerHTML='<p style="color:#888;font-size:13px">Ingresá la cantidad de litros a producir para ver el cálculo.</p>'; return; }
+
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:var(--cream)"><th style="padding:8px;text-align:left">Materia Prima</th><th style="padding:8px;text-align:right">Necesario</th><th style="padding:8px;text-align:right">En stock</th><th style="padding:8px;text-align:right">Diferencia</th></tr></thead><tbody>';
+  Object.entries(resultados).forEach(([mp_id, necesario]) => {
+    const mp = MATERIAS_PRIMAS.find(m=>m.id===mp_id);
+    if(!mp) return;
+    const enStock = stockMP[mp_id]||0;
+    const diff = enStock - necesario;
+    const color = diff >= 0 ? 'var(--green)' : 'var(--red)';
+    const signo = diff >= 0 ? '+' : '';
+    html += `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px">${mp.nombre}</td>
+      <td style="padding:8px;text-align:right">${necesario.toFixed(2)} ${mp.unidad}</td>
+      <td style="padding:8px;text-align:right">${enStock.toFixed(2)} ${mp.unidad}</td>
+      <td style="padding:8px;text-align:right;color:${color};font-weight:600">${signo}${diff.toFixed(2)} ${mp.unidad}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  resEl.innerHTML = html;
+}
+
+// PASO 1: Fabricación — descuenta MP, suma a granel
+async function registrarFabricacion(){
+  const lotes = {};
+  let hayAlgo = false;
+  Object.entries(FORMULAS).forEach(([prod]) => {
+    const el = document.getElementById('fab-litros-'+prod.replace(/\s/g,'_'));
+    const litros = parseFloat(el?.value)||0;
+    if(litros > 0){ lotes[prod] = litros; hayAlgo = true; }
+  });
+  if(!hayAlgo){ alert('Ingresá al menos un producto a fabricar.'); return; }
+
+  const necesario = {};
+  Object.entries(lotes).forEach(([prod, litros]) => {
+    Object.entries(FORMULAS[prod]).forEach(([mp_id, pct]) => {
+      necesario[mp_id] = (necesario[mp_id]||0) + litros * pct;
+    });
+  });
+  const faltante = Object.entries(necesario).filter(([mp_id, cant]) => (stockMP[mp_id]||0) < cant);
+  if(faltante.length > 0){
+    const msgs = faltante.map(([mp_id, cant]) => {
+      const mp = MATERIAS_PRIMAS.find(m=>m.id===mp_id);
+      return `${mp?.nombre||mp_id}: necesitás ${cant.toFixed(2)}, tenés ${(stockMP[mp_id]||0).toFixed(2)}`;
+    });
+    if(!confirm(`Stock insuficiente:\n${msgs.join('\n')}\n\n¿Registrar igual?`)) return;
+  }
+  for(const [mp_id, cant] of Object.entries(necesario)){
+    await guardarStockMP(mp_id, Math.max(0,(stockMP[mp_id]||0)-cant));
+  }
+  for(const [prod, litros] of Object.entries(lotes)){
+    await guardarStockGranel(prod, (stockGranel[prod]||0)+litros);
+  }
+  Object.keys(FORMULAS).forEach(prod => {
+    const el = document.getElementById('fab-litros-'+prod.replace(/\s/g,'_'));
+    if(el) el.value = '';
+  });
+  alert('✓ Fabricación registrada. Granel actualizado.');
+  renderProduccion();
+}
+
+// PASO 2: Fraccionado — descuenta granel + botellas + tapas, suma a botellas llenas
+async function registrarFraccionado(){
+  const lotes = {};
+  let hayAlgo = false;
+  PRODS.forEach(p => {
+    const el = document.getElementById('frac-bot-'+p.id);
+    const cant = parseFloat(el?.value)||0;
+    if(cant > 0){ lotes[p.id] = cant; hayAlgo = true; }
+  });
+  if(!hayAlgo){ alert('Ingresá al menos un producto a fraccionar.'); return; }
+
+  const warnings = [];
+  for(const [prod_id, botellas] of Object.entries(lotes)){
+    const p = PRODS.find(x=>x.id==prod_id);
+    const ml = ML_POR_BOTELLA[prod_id]||0;
+    const litrosNec = (botellas * ml) / 1000;
+    const granelDisp = stockGranel[p.nombre]||0;
+    if(granelDisp < litrosNec) warnings.push(`${p.nombre} ${p.pres}: necesitás ${litrosNec.toFixed(2)}L granel, tenés ${granelDisp.toFixed(2)}L`);
+    const insumoId = INSUMO_BOTELLA[prod_id];
+    const botDisp = stockInsumos[insumoId]||0;
+    if(botDisp < botellas) warnings.push(`Botellas ${p.nombre} ${p.pres}: necesitás ${botellas}, tenés ${botDisp}`);
+  }
+  const tapasNec = Object.values(lotes).reduce((s,v)=>s+v,0);
+  if((stockInsumos['tapas']||0) < tapasNec) warnings.push(`Tapas: necesitás ${tapasNec}, tenés ${stockInsumos['tapas']||0}`);
+
+  if(warnings.length > 0){
+    if(!confirm(`Stock insuficiente:\n${warnings.join('\n')}\n\n¿Registrar igual?`)) return;
+  }
+
+  for(const [prod_id, botellas] of Object.entries(lotes)){
+    const p = PRODS.find(x=>x.id==prod_id);
+    const ml = ML_POR_BOTELLA[prod_id]||0;
+    const litros = (botellas * ml) / 1000;
+    await guardarStockGranel(p.nombre, Math.max(0,(stockGranel[p.nombre]||0)-litros));
+    const insumoId = INSUMO_BOTELLA[prod_id];
+    await guardarStockInsumo(insumoId, Math.max(0,(stockInsumos[insumoId]||0)-botellas));
+    await guardarStockBotellas(prod_id, (stockBotellas[prod_id]||0)+botellas);
+  }
+  await guardarStockInsumo('tapas', Math.max(0,(stockInsumos['tapas']||0)-tapasNec));
+
+  PRODS.forEach(p => {
+    const el = document.getElementById('frac-bot-'+p.id);
+    if(el) el.value = '';
+  });
+  alert('✓ Fraccionado registrado. Botellas llenas actualizadas.');
+  renderProduccion();
+}
+
+// PASO 3: Encajonado — descuenta botellas llenas + etiquetas + cajas, suma a terminado
+async function registrarEncajonado(){
+  const lotes = {};
+  let hayAlgo = false;
+  PRODS.forEach(p => {
+    const el = document.getElementById('enc-cajas-'+p.id);
+    const cant = parseFloat(el?.value)||0;
+    if(cant > 0){ lotes[p.id] = cant; hayAlgo = true; }
+  });
+  if(!hayAlgo){ alert('Ingresá al menos un producto a encajonar.'); return; }
+
+  const warnings = [];
+  let totalBotellas = 0;
+  for(const [prod_id, cajas] of Object.entries(lotes)){
+    const p = PRODS.find(x=>x.id==prod_id);
+    const botPorCaja = BOT_POR_CAJA[prod_id]||0;
+    const botNec = cajas * botPorCaja;
+    totalBotellas += botNec;
+    const botDisp = stockBotellas[prod_id]||0;
+    if(botDisp < botNec) warnings.push(`${p.nombre} ${p.pres}: necesitás ${botNec} botellas llenas, tenés ${botDisp}`);
+  }
+  const cajasNec = Object.values(lotes).reduce((s,v)=>s+v,0);
+  if((stockInsumos['cajas']||0) < cajasNec) warnings.push(`Cajas: necesitás ${cajasNec}, tenés ${stockInsumos['cajas']||0}`);
+  if((stockInsumos['etiquetas']||0) < totalBotellas) warnings.push(`Etiquetas: necesitás ${totalBotellas}, tenés ${stockInsumos['etiquetas']||0}`);
+
+  if(warnings.length > 0){
+    if(!confirm(`Stock insuficiente:\n${warnings.join('\n')}\n\n¿Registrar igual?`)) return;
+  }
+
+  for(const [prod_id, cajas] of Object.entries(lotes)){
+    const botPorCaja = BOT_POR_CAJA[prod_id]||0;
+    const botNec = cajas * botPorCaja;
+    await guardarStockBotellas(prod_id, Math.max(0,(stockBotellas[prod_id]||0)-botNec));
+    await guardarStockTerminado(prod_id, (stockTerminado[prod_id]||0)+cajas);
+  }
+  await guardarStockInsumo('cajas', Math.max(0,(stockInsumos['cajas']||0)-cajasNec));
+  await guardarStockInsumo('etiquetas', Math.max(0,(stockInsumos['etiquetas']||0)-totalBotellas));
+
+  PRODS.forEach(p => {
+    const el = document.getElementById('enc-cajas-'+p.id);
+    if(el) el.value = '';
+  });
+  alert('✓ Encajonado registrado. Stock terminado actualizado.');
+  renderProduccion();
+}
+
+// kept for backward compat (old button)
+async function registrarProduccion(){ await registrarFabricacion(); }
+
+async function renderProduccion(){
+  await loadStockProduccion();
+  const tab = document.getElementById('tab-produccion');
+
+  // Helper: stock row editable
+  const mpRows = MATERIAS_PRIMAS.map(mp => {
+    const stock = stockMP[mp.id]||0;
+    const low = stock < 20;
     return `<tr style="border-bottom:1px solid var(--border)${low?';background:#fff5f5':''}">
-      <td style="padding:10px 12px;font-weight:500">${p.nombre}</td>
-      <td style="padding:10px 12px;color:#888;font-size:13px">${p.pres}</td>
-      <td style="padding:10px 12px;text-align:center;font-weight:600;font-size:15px${low?';color:var(--red)':';color:var(--green)'}">${cajas}</td>
-      <td style="padding:10px 12px;text-align:center;color:#888;font-size:13px">${botPorCaja}</td>
-      <td style="padding:10px 12px;text-align:center;color:#666;font-size:13px">${totalBot}</td>
-      <td style="padding:10px 12px;text-align:center">${low?'<span style="color:var(--red);font-weight:600">⚠ Bajo</span>':'<span style="color:var(--green)">✓</span>'}</td>
-      ${isAdmin?`<td style="padding:8px">
-        <input type="number" min="0" step="1" value="${cajas}"
-          style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-size:12px;text-align:right"
-          onblur="guardarStockTerminado(${p.id},this.value).then(()=>renderStock())">
-      </td>`:'<td></td>'}
+      <td style="padding:8px">${mp.nombre}</td>
+      <td style="padding:8px;text-align:right">
+        <input type="number" min="0" step="0.1" value="${stock}"
+          style="width:90px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-size:12px;text-align:right"
+          onblur="guardarStockMP('${mp.id}',this.value).then(()=>renderProduccion())">
+      </td>
+      <td style="padding:8px;text-align:center">${mp.unidad}</td>
+      <td style="padding:8px;text-align:center">${low?'<span style="color:var(--red);font-weight:600">⚠ Bajo</span>':'<span style="color:var(--green)">✓</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  const insumosRows = INSUMOS_ENVASADO.map(ins => {
+    const stock = stockInsumos[ins.id]||0;
+    const low = stock < 100;
+    return `<tr style="border-bottom:1px solid var(--border)${low?';background:#fff5f5':''}">
+      <td style="padding:8px">${ins.nombre}</td>
+      <td style="padding:8px;text-align:right">
+        <input type="number" min="0" step="1" value="${stock}"
+          style="width:100px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-size:12px;text-align:right"
+          onblur="guardarStockInsumo('${ins.id}',this.value).then(()=>renderProduccion())">
+      </td>
+      <td style="padding:8px;text-align:center">${ins.unidad}</td>
+      <td style="padding:8px;text-align:center">${low?'<span style="color:var(--red);font-weight:600">⚠ Bajo</span>':'<span style="color:var(--green)">✓</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  // Paso 1 - Fabricacion rows
+  const fabRows = Object.keys(FORMULAS).map(prod => {
+    const granel = (stockGranel[prod]||0).toFixed(1);
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px;font-weight:500">${prod}</td>
+      <td style="padding:8px;color:#888;font-size:12px">${granel}L en granel</td>
+      <td style="padding:8px">
+        <input type="number" min="0" id="fab-litros-${prod.replace(/\s/g,'_')}" placeholder="0"
+          style="width:90px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px"
+          oninput="calcularNecesario()">
+      </td>
+      <td style="padding:6px;color:#888;font-size:12px">litros</td>
+    </tr>`;
+  }).join('');
+
+  // Paso 2 - Fraccionado rows
+  const fracRows = PRODS.map(p => {
+    const botellas = stockBotellas[p.id]||0;
+    const ml = ML_POR_BOTELLA[p.id]||0;
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px;font-weight:500">${p.nombre}</td>
+      <td style="padding:8px;color:#888;font-size:12px">${p.pres}</td>
+      <td style="padding:8px;color:#888;font-size:12px">${botellas} bot. llenas</td>
+      <td style="padding:8px">
+        <input type="number" min="0" id="frac-bot-${p.id}" placeholder="0"
+          style="width:90px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px">
+      </td>
+      <td style="padding:6px;color:#888;font-size:12px">botellas</td>
+    </tr>`;
+  }).join('');
+
+  // Paso 3 - Encajonado rows
+  const encRows = PRODS.map(p => {
+    const cajas = stockTerminado[p.id]||0;
+    const botPorCaja = BOT_POR_CAJA[p.id]||0;
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px;font-weight:500">${p.nombre}</td>
+      <td style="padding:8px;color:#888;font-size:12px">${p.pres}</td>
+      <td style="padding:8px;color:#888;font-size:12px">${cajas} cajas listas · ${botPorCaja} bot/caja</td>
+      <td style="padding:8px">
+        <input type="number" min="0" id="enc-cajas-${p.id}" placeholder="0"
+          style="width:90px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px">
+      </td>
+      <td style="padding:6px;color:#888;font-size:12px">cajas</td>
+    </tr>`;
+  }).join('');
+
+  // Panel resumen
+  const resumenRows = PRODS.map(p => {
+    const granel = (stockGranel[p.nombre]||0).toFixed(1);
+    const botellas = stockBotellas[p.id]||0;
+    const cajas = stockTerminado[p.id]||0;
+    const ml = ML_POR_BOTELLA[p.id]||0;
+    const litrosEnBotellas = ((botellas * ml)/1000).toFixed(1);
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px;font-weight:500">${p.nombre}</td>
+      <td style="padding:8px;color:#888;font-size:12px">${p.pres}</td>
+      <td style="padding:8px;text-align:center">${granel}L</td>
+      <td style="padding:8px;text-align:center">${botellas} <span style="font-size:11px;color:#aaa">(${litrosEnBotellas}L)</span></td>
+      <td style="padding:8px;text-align:center;font-weight:600;color:var(--green)">${cajas}</td>
     </tr>`;
   }).join('');
 
   tab.innerHTML = `
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <h2 style="margin:0">📦 Stock de Producto Terminado</h2>
-        <span style="font-size:12px;color:#888">Cajas listas para despacho${isAdmin?' · Editá el valor y hacé click afuera para guardar':''}</span>
-      </div>
+    <div style="margin-bottom:16px" class="card">
+      <h2>📊 Resumen de Stock</h2>
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="background:var(--cream)">
-          <th style="padding:10px 12px;text-align:left">Producto</th>
-          <th style="padding:10px 12px;text-align:left">Presentación</th>
-          <th style="padding:10px 12px;text-align:center">Cajas</th>
-          <th style="padding:10px 12px;text-align:center">Bot/caja</th>
-          <th style="padding:10px 12px;text-align:center">Total botellas</th>
-          <th style="padding:10px 12px;text-align:center">Estado</th>
-          ${isAdmin?'<th style="padding:10px 12px;text-align:center">Ajustar</th>':'<th></th>'}
+          <th style="padding:8px;text-align:left">Producto</th>
+          <th style="padding:8px;text-align:left">Presentación</th>
+          <th style="padding:8px;text-align:center">🧴 Granel</th>
+          <th style="padding:8px;text-align:center">🍾 Botellas llenas</th>
+          <th style="padding:8px;text-align:center">📦 Cajas listas</th>
         </tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody>${resumenRows}</tbody>
       </table>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div class="card">
+        <h2>🧪 Stock Materias Primas</h2>
+        <p style="font-size:12px;color:#888;margin-bottom:12px">Editá y hacé click afuera para guardar. ⚠ = menos de 20L.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--cream)">
+            <th style="padding:8px;text-align:left">Materia Prima</th>
+            <th style="padding:8px;text-align:right">Stock</th>
+            <th style="padding:8px;text-align:center">Unid.</th>
+            <th style="padding:8px;text-align:center">Estado</th>
+          </tr></thead>
+          <tbody>${mpRows}</tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2>📦 Stock Insumos de Envasado</h2>
+        <p style="font-size:12px;color:#888;margin-bottom:12px">Editá y hacé click afuera para guardar. ⚠ = menos de 100 unid.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--cream)">
+            <th style="padding:8px;text-align:left">Insumo</th>
+            <th style="padding:8px;text-align:right">Stock</th>
+            <th style="padding:8px;text-align:center">Unid.</th>
+            <th style="padding:8px;text-align:center">Estado</th>
+          </tr></thead>
+          <tbody>${insumosRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+      <div class="card">
+        <h2>⚗️ Paso 1 — Fabricación</h2>
+        <p style="font-size:12px;color:#888;margin-bottom:12px">Mezcla de materias primas → granel. Descuenta MP y suma litros a granel.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--cream)">
+            <th style="padding:8px;text-align:left">Producto</th>
+            <th style="padding:8px;text-align:left">Stock actual</th>
+            <th style="padding:8px;text-align:left">Fabricar</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${fabRows}</tbody>
+        </table>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="registrarFabricacion()">✓ Registrar Fabricación</button>
+        </div>
+        <div style="margin-top:10px">
+          <h3 style="font-size:13px;font-weight:600;margin-bottom:8px">MP necesaria</h3>
+          <div id="calc-resultado"><p style="color:#888;font-size:12px">Ingresá litros para ver el cálculo.</p></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>🍾 Paso 2 — Fraccionado</h2>
+        <p style="font-size:12px;color:#888;margin-bottom:12px">Granel → botellas. Descuenta granel + botellas vacías + tapas.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--cream)">
+            <th style="padding:8px;text-align:left">Producto</th>
+            <th style="padding:8px;text-align:left">Pres.</th>
+            <th style="padding:8px;text-align:left">Actual</th>
+            <th style="padding:8px;text-align:left">Fraccionar</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${fracRows}</tbody>
+        </table>
+        <div style="margin-top:12px">
+          <button class="btn btn-primary" onclick="registrarFraccionado()">✓ Registrar Fraccionado</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>📦 Paso 3 — Encajonado</h2>
+        <p style="font-size:12px;color:#888;margin-bottom:12px">Botellas → cajas listas. Descuenta botellas llenas + etiquetas + cajas.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--cream)">
+            <th style="padding:8px;text-align:left">Producto</th>
+            <th style="padding:8px;text-align:left">Pres.</th>
+            <th style="padding:8px;text-align:left">Actual</th>
+            <th style="padding:8px;text-align:left">Encajonar</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${encRows}</tbody>
+        </table>
+        <div style="margin-top:12px">
+          <button class="btn btn-primary" onclick="registrarEncajonado()">✓ Registrar Encajonado</button>
+        </div>
+      </div>
     </div>`;
 }
-
 
 async function renderAdmin(){
   if(currentProfile.rol!=='admin'){document.getElementById('tab-admin').innerHTML='<div class="empty">Sin acceso.</div>';return;}
