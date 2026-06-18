@@ -802,9 +802,11 @@ function renderPedidos(){
     const editBtns=canEdit?`
       <button class="btn-sm btn-blue" onclick="abrirEdicion(${p.id})">✏️ Editar</button>
       <button class="btn-sm btn-danger" onclick="eliminarPedido(${p.id})">Eliminar</button>`:'';
-    const pdfBtns=`
-      <button class="btn-sm" style="background:var(--cream);border:1px solid var(--border)" onclick="exportarPDF(${p.id},true)">🖨 PDF con precios</button>
-      <button class="btn-sm" style="background:var(--cream);border:1px solid var(--border)" onclick="exportarPDF(${p.id},false)">🖨 PDF sin precios</button>`;
+    const esProduccion = currentProfile.rol==='produccion';
+    const pdfBtns = esProduccion
+      ? `<button class="btn-sm" style="background:var(--cream);border:1px solid var(--border)" onclick="exportarPDF(${p.id},false)">🖨 PDF sin precios</button>`
+      : `<button class="btn-sm" style="background:var(--cream);border:1px solid var(--border)" onclick="exportarPDF(${p.id},true)">🖨 PDF con precios</button>
+         <button class="btn-sm" style="background:var(--cream);border:1px solid var(--border)" onclick="exportarPDF(${p.id},false)">🖨 PDF sin precios</button>`;
     return`<div class="pedido-card">
       <div class="pedido-header" onclick="tog(${p.id})">
         <div class="pedido-num">P${idx+1}</div>
