@@ -102,6 +102,7 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
 .badge-pendiente{background:var(--warn-bg);color:var(--warn-fg)}
 .badge-entregado{background:var(--ok-bg);color:var(--ok-fg)}
 .badge-produccion{background:var(--blue-l);color:var(--blue)}
+.badge-muestra{background:#F3E5F5;color:#6A1B9A}
 .badge-pagado{background:var(--ok-bg);color:var(--ok-fg)}
 .badge-nopagado{background:#ffebee;color:var(--red)}
 .pedido-body{border-top:1px solid var(--border);padding:14px 16px;display:none}
@@ -254,6 +255,7 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
 
     <div id="tab-nuevo"></div>
     <div id="tab-pedidos" style="display:none"></div>
+    <div id="tab-muestras" style="display:none"></div>
     <div id="tab-cobros" style="display:none"></div>
     <div id="tab-estadisticas" style="display:none"></div>
     <div id="tab-resumen" style="display:none"></div>
@@ -444,7 +446,7 @@ function totalMonto(p){
 }
 function totalBultos(p){return (p.productos||[]).reduce((a,x)=>a+x.bultos,0);}
 
-let supaToken=null, currentUser=null, currentProfile=null, pedidos=[], charts={}, editingId=null, filtroProvinciaActual=null;
+let supaToken=null, currentUser=null, currentProfile=null, pedidos=[], muestras=[], charts={}, editingId=null, filtroProvinciaActual=null;
 
 async function supa(path,method='GET',body=null){
   const h={'apikey':SUPA_KEY,'Content-Type':'application/json'};
@@ -545,6 +547,7 @@ function buildTabs(){
   const tabs=[
     {id:'nuevo',label:'+ Nuevo',roles:['admin','comercial']},
     {id:'pedidos',label:'📦 Pedidos',roles:['admin','comercial','produccion','compras']},
+    {id:'muestras',label:'🎁 Muestras',roles:['admin','comercial','produccion']},
     {id:'cobros',label:'💰 Cobros',roles:['admin','comercial']},
     {id:'estadisticas',label:'📊 Stats',roles:['admin','comercial']},
     {id:'resumen',label:'📋 Resumen',roles:['admin','comercial']},
@@ -559,7 +562,7 @@ function buildTabs(){
 }
 
 function showTab(t){
-  ['nuevo','pedidos','cobros','estadisticas','resumen','proyeccion','admin','stock'].forEach(tab=>{
+  ['nuevo','pedidos','muestras','cobros','estadisticas','resumen','proyeccion','admin','stock'].forEach(tab=>{
     const el=document.getElementById('tab-'+tab);
     if(el)el.style.display=tab===t?'block':'none';
   });
@@ -567,6 +570,7 @@ function showTab(t){
     el.classList.toggle('active',el.textContent.includes(t)||el.onclick?.toString().includes(`'${t}'`));
   });
   if(t==='pedidos')renderPedidos();
+  if(t==='muestras')renderMuestras();
   if(t==='cobros')renderCobros();
   if(t==='estadisticas')renderStats();
   if(t==='resumen')renderResumen();
@@ -580,6 +584,8 @@ async function loadPedidos(){
   try{
     pedidos=await supa('/rest/v1/pedidos?select=*&order=created_at.asc');
     pedidos=pedidos.map(p=>({...p,productos:p.productos||[]}));
+    muestras=await supa('/rest/v1/muestras?select=*&order=created_at.asc');
+    muestras=muestras.map(m=>({...m,productos:m.productos||[]}));
     updateProvFilterOptions();
     updateStats();
   }catch(e){console.error(e);}
@@ -885,7 +891,7 @@ function renderPedidos(){
           </div>` : ''}
         </div>`:''}
         <div class="pedido-actions">
-          ${canEdit?`<select onchange="cambiarEstado(${p.id},this.value)">
+          ${canEdit||currentProfile.rol==='produccion'?`<select onchange="cambiarEstado(${p.id},this.value)">
             <option value="pendiente" ${p.estado==='pendiente'?'selected':''}>Pendiente</option>
             <option value="produccion" ${p.estado==='produccion'?'selected':''}>En producción</option>
             <option value="entregado" ${p.estado==='entregado'?'selected':''}>Entregado</option>
@@ -1577,7 +1583,323 @@ function renderProyeccion(){
     }
   });
 }
+// ── MUESTRAS ────────────────────────────────────────────────────────────────
 
-</script>
+function renderNuevaMuestra(){
+  const canEdit=['admin','comercial'].includes(currentProfile.rol);
+  if(!canEdit){document.getElementById('tab-muestras').innerHTML='<div class="empty">No tenés permisos para crear muestras.</div>';return;}
+  // Solo renderiza el form si no hay contenido ya cargado
+  const existing = document.getElementById('muestra-list-wrap');
+  if(existing) return;
+  renderMuestras();
+}
+
+function renderMuestras(){
+  const canEdit=['admin','comercial'].includes(currentProfile.rol);
+  const _pAx=currentProfile._provinciasArr;
+  const muestrasFilt=_pAx?.length?muestras.filter(m=>_pAx.includes(m.provincia)):filtroProvinciaActual?muestras.filter(m=>m.provincia===filtroProvinciaActual):muestras;
+
+  const formHtml = canEdit ? `
+  <div class="card" style="border-top:3px solid #6A1B9A">
+    <h2>🎁 Nueva Muestra</h2>
+    <div class="form-row">
+      <div class="field"><label>Cliente / Destino</label>
+        <select id="mf-cliente" onchange="autoProvinciaMuestra()">
+          <option value="">Seleccioná o escribí...</option>
+          ${CLIENTES.map(c=>`<option value="${c.nombre}">${c.nombre}</option>`).join('')}
+          <option value="__otro">Otro...</option>
+        </select>
+      </div>
+      <div class="field" id="mf-cliente-otro-wrap" style="display:none"><label>Nombre</label><input type="text" id="mf-cliente-otro" placeholder="Nombre del destinatario"></div>
+      <div class="field"><label>Fecha</label><input type="date" id="mf-fecha"></div>
+      <div class="field"><label>Estado</label>
+        <select id="mf-estado">
+          <option value="pendiente">Pendiente</option>
+          <option value="produccion">En producción</option>
+          <option value="entregado">Entregado</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Dirección de entrega</label><input type="text" id="mf-direccion" placeholder="Ej: Av. San Martín 1234, Mendoza"></div>
+      <div class="field"><label>Contacto</label><input type="text" id="mf-contacto" placeholder="Ej: Juan Pérez / 261-555-1234"></div>
+      <div class="field"><label>Notas</label><input type="text" id="mf-notas" placeholder="Ej: para visita comercial del 25/06"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Provincia</label>
+        <select id="mf-provincia">
+          <option value="">Seleccioná...</option>
+          <option value="Buenos Aires">Buenos Aires</option>
+          <option value="CABA">CABA</option>
+          <option value="Córdoba">Córdoba</option>
+          <option value="Mendoza" selected>Mendoza</option>
+          <option value="Santa Fe">Santa Fe</option>
+          <option value="Tucumán">Tucumán</option>
+          <option value="Salta">Salta</option>
+          <option value="Entre Ríos">Entre Ríos</option>
+          <option value="Neuquén">Neuquén</option>
+          <option value="Río Negro">Río Negro</option>
+          <option value="San Juan">San Juan</option>
+          <option value="San Luis">San Luis</option>
+          <option value="La Rioja">La Rioja</option>
+          <option value="Catamarca">Catamarca</option>
+          <option value="Jujuy">Jujuy</option>
+          <option value="Chaco">Chaco</option>
+          <option value="Corrientes">Corrientes</option>
+          <option value="Misiones">Misiones</option>
+          <option value="Formosa">Formosa</option>
+          <option value="Chubut">Chubut</option>
+          <option value="Santa Cruz">Santa Cruz</option>
+          <option value="La Pampa">La Pampa</option>
+          <option value="Santiago del Estero">Santiago del Estero</option>
+          <option value="Tierra del Fuego">Tierra del Fuego</option>
+        </select>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="ptbl">
+        <thead><tr><th>Producto</th><th>Pres.</th><th>UxB</th><th>Bultos</th><th>Unidades</th></tr></thead>
+        <tbody id="muestra-prod-body"></tbody>
+      </table>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:12px">
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="btn btn-primary" style="background:#6A1B9A" onclick="guardarMuestra()">Guardar Muestra</button>
+        <span id="muestra-form-msg" style="font-size:12px;color:#888"></span>
+      </div>
+      <div style="font-size:12px;color:#888;font-style:italic">Las muestras no tienen valor y no suman al total vendido.</div>
+    </div>
+  </div>` : '';
+
+  const listHtml = `<div id="muestra-list-wrap">
+    ${muestrasFilt.length===0
+      ? '<div class="empty">No hay muestras registradas.</div>'
+      : muestrasFilt.map((m,idx)=>renderMuestraCard(m,idx)).join('')
+    }
+  </div>`;
+
+  document.getElementById('tab-muestras').innerHTML = formHtml + listHtml;
+
+  if(canEdit){
+    document.getElementById('mf-fecha').valueAsDate=new Date();
+    renderMuestraProdBody();
+  }
+}
+
+function renderMuestraProdBody(){
+  document.getElementById('muestra-prod-body').innerHTML=PRODS.map(pp=>`
+    <tr>
+      <td>${pp.nombre}</td><td>${pp.pres}</td><td>${pp.uxb}</td>
+      <td><input type="number" min="0" value="0" id="mb-${pp.id}" oninput="calcMU(${pp.id},${pp.uxb})" style="width:60px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px"></td>
+      <td id="mu-${pp.id}" style="color:#888;font-size:12px">0</td>
+    </tr>`).join('');
+}
+
+function calcMU(pid,uxb){
+  const b=parseInt(document.getElementById('mb-'+pid).value)||0;
+  document.getElementById('mu-'+pid).textContent=b*uxb;
+}
+
+function autoProvinciaMuestra(){
+  const sel=document.getElementById('mf-cliente').value;
+  const otroWrap=document.getElementById('mf-cliente-otro-wrap');
+  if(sel==='__otro'){otroWrap.style.display='block';return;}
+  otroWrap.style.display='none';
+  const cli=CLIENTES.find(c=>c.nombre===sel);
+  if(cli&&cli.provincia){const ps=document.getElementById('mf-provincia');if(ps)ps.value=cli.provincia;}
+}
+
+async function guardarMuestra(){
+  const selCli=document.getElementById('mf-cliente').value;
+  const cliente=selCli==='__otro'
+    ?(document.getElementById('mf-cliente-otro').value.trim()||'Sin nombre')
+    :(selCli||'Sin nombre');
+  const fecha=document.getElementById('mf-fecha').value;
+  const estado=document.getElementById('mf-estado').value;
+  const provincia=document.getElementById('mf-provincia').value;
+  const notas=document.getElementById('mf-notas').value;
+  const direccion_entrega=document.getElementById('mf-direccion').value;
+  const contacto_entrega=document.getElementById('mf-contacto').value;
+  const productos=PRODS.map(pp=>({pid:pp.id,bultos:parseInt(document.getElementById('mb-'+pp.id).value)||0})).filter(x=>x.bultos>0);
+  if(!fecha){alert('Seleccioná una fecha.');return;}
+  if(!productos.length){alert('Agregá al menos un producto.');return;}
+  const msg=document.getElementById('muestra-form-msg');
+  msg.textContent='Guardando...';
+  try{
+    const r=await supa('/rest/v1/muestras','POST',{cliente,fecha,estado,provincia,notas,productos,direccion_entrega,contacto_entrega});
+    const nueva=Array.isArray(r)?r[0]:r;
+    if(nueva){muestras.push({...nueva,productos:nueva.productos||[]});}
+    msg.textContent='✓ Muestra guardada';
+    setTimeout(()=>{msg.textContent='';renderMuestras();},800);
+  }catch(e){msg.style.color='var(--red)';msg.textContent='Error: '+e.message;}
+}
+
+function renderMuestraCard(m, idx){
+  const canEdit=['admin','comercial'].includes(currentProfile.rol);
+  const estadoMap={pendiente:{cls:'badge-pendiente',lbl:'Pendiente'},produccion:{cls:'badge-produccion',lbl:'En producción'},entregado:{cls:'badge-entregado',lbl:'Entregado'}};
+  const {cls:bc,lbl:bt}=estadoMap[m.estado]||estadoMap.pendiente;
+  const tb=totalBultosMuestra(m);
+  const rows=(m.productos||[]).map(pr=>{
+    const pp=getProd(pr.pid);if(!pp)return'';
+    return`<tr><td>${pp.nombre}</td><td>${pp.pres}</td><td>${pr.bultos}</td><td>${pr.bultos*pp.uxb}</td></tr>`;
+  }).join('');
+
+  return`<div class="pedido-card" style="border-left:3px solid #6A1B9A">
+    <div class="pedido-header" onclick="togM(${m.id})">
+      <div class="pedido-num" style="color:#6A1B9A">M${idx+1}</div>
+      <div class="pedido-info">
+        <div class="cliente">${m.cliente}</div>
+        <div class="fecha">${m.fecha} · ${tb} bultos${m.provincia?' · <span style="color:var(--blue);font-weight:600">'+m.provincia+'</span>':''}</div>
+      </div>
+      <span class="badge ${bc}">${bt}</span>
+      <span class="badge badge-muestra" style="margin-left:4px">Muestra</span>
+      <span class="chevron" id="mchev-${m.id}">▼</span>
+    </div>
+    <div class="pedido-body" id="mbody-${m.id}">
+      <table><thead><tr><th>Producto</th><th>Pres.</th><th>Bultos</th><th>Unidades</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      ${m.notas?`<p style="font-size:11px;color:#888;margin-top:6px">📝 ${m.notas}</p>`:''}
+      ${canEdit?`
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:6px">
+          <label style="font-size:11px;color:#666;font-weight:600;white-space:nowrap">N° Remito</label>
+          <input type="text" id="mnro-rem-${m.id}" value="${m.nro_remito||''}" placeholder="—" style="width:110px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;background:var(--cream)" onblur="guardarCampoMuestra(${m.id},'nro_remito',this.value)">
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <label style="font-size:11px;color:#666;font-weight:600;white-space:nowrap">N° OC</label>
+          <input type="text" id="mnro-oc-${m.id}" value="${m.nro_oc||''}" placeholder="—" style="width:110px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;background:var(--cream)" onblur="guardarCampoMuestra(${m.id},'nro_oc',this.value)">
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <label style="font-size:11px;color:#666;font-weight:600;white-space:nowrap">Remito</label>
+          ${m.remito_url
+            ?`<a href="${m.remito_url}" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:underline">Ver Remito 🧾</a>
+               <label style="cursor:pointer;font-size:11px;color:#888;text-decoration:underline">Reemplazar<input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="subirArchivoMuestra(${m.id},'remito',this)"></label>`
+            :`<label style="cursor:pointer;padding:4px 10px;background:var(--cream);border:1px solid var(--border);border-radius:5px;font-size:11px">
+                🧾 Subir Remito<input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="subirArchivoMuestra(${m.id},'remito',this)">
+              </label>`}
+          <span id="mremito-status-${m.id}" style="font-size:11px;color:var(--green)"></span>
+        </div>
+        ${m.direccion_entrega||m.contacto_entrega?`
+        <div style="margin-top:6px;padding:8px 10px;background:#f9f9f9;border-radius:6px;border:1px solid var(--border);width:100%">
+          ${m.direccion_entrega?`<div style="font-size:11px;color:#555">📍 <strong>Dirección:</strong> ${m.direccion_entrega}</div>`:''}
+          ${m.contacto_entrega?`<div style="font-size:11px;color:#555;margin-top:2px">👤 <strong>Contacto:</strong> ${m.contacto_entrega}</div>`:''}
+        </div>`:''}
+      </div>
+      <div class="pedido-actions" style="margin-top:10px">
+        <select onchange="cambiarEstadoMuestra(${m.id},this.value)">
+          <option value="pendiente" ${m.estado==='pendiente'?'selected':''}>Pendiente</option>
+          <option value="produccion" ${m.estado==='produccion'?'selected':''}>En producción</option>
+          <option value="entregado" ${m.estado==='entregado'?'selected':''}>Entregado</option>
+        </select>
+        <button class="btn-sm btn-danger" onclick="eliminarMuestra(${m.id})">Eliminar</button>
+        <button class="btn-sm" style="background:var(--cream);border:1px solid var(--border)" onclick="exportarPDFMuestra(${m.id})">🖨 PDF</button>
+      </div>`:''}
+    </div>
+  </div>`;
+}
+
+function togM(id){
+  document.getElementById('mbody-'+id).classList.toggle('open');
+  document.getElementById('mchev-'+id).classList.toggle('open');
+}
+
+function totalBultosMuestra(m){return (m.productos||[]).reduce((a,x)=>a+x.bultos,0);}
+
+async function cambiarEstadoMuestra(id,v){
+  await supa(`/rest/v1/muestras?id=eq.${id}`,'PATCH',{estado:v});
+  const m=muestras.find(x=>x.id===id);if(m)m.estado=v;
+}
+
+async function guardarCampoMuestra(id,campo,valor){
+  const m=muestras.find(x=>x.id===id);if(!m)return;
+  m[campo]=valor;
+  await supa(`/rest/v1/muestras?id=eq.${id}`,'PATCH',{[campo]:valor||null});
+}
+
+async function subirArchivoMuestra(id,tipo,input){
+  const file=input.files[0];if(!file)return;
+  const statusId=tipo==='remito'?`mremito-status-${id}`:`moc-status-${id}`;
+  const status=document.getElementById(statusId);
+  if(status)status.textContent='Subiendo...';
+  try{
+    const ext=file.name.split('.').pop();
+    const path=`muestras/${tipo}/${id}_${Date.now()}.${ext}`;
+    const r=await fetch(`${SUPA_URL}/storage/v1/object/app/${path}`,{
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+supaToken,'Content-Type':file.type,'x-upsert':'true'},
+      body:file
+    });
+    if(!r.ok)throw new Error('Error al subir');
+    const url=`${SUPA_URL}/storage/v1/object/public/app/${path}`;
+    const campo=tipo==='remito'?'remito_url':'oc_url';
+    await guardarCampoMuestra(id,campo,url);
+    if(status)status.textContent='✓ Subido';
+    setTimeout(()=>renderMuestras(),800);
+  }catch(e){if(status){status.style.color='var(--red)';status.textContent='Error: '+e.message;}}
+}
+
+async function eliminarMuestra(id){
+  if(!confirm('¿Eliminar esta muestra?'))return;
+  await supa(`/rest/v1/muestras?id=eq.${id}`,'DELETE');
+  muestras=muestras.filter(m=>m.id!==id);
+  renderMuestras();
+}
+
+function exportarPDFMuestra(muestraId){
+  const m=muestras.find(x=>x.id===muestraId);
+  if(!m)return;
+  const tb=totalBultosMuestra(m);
+  const prodRows=(m.productos||[]).map(pr=>{
+    const pp=getProd(pr.pid);if(!pp)return'';
+    return`<tr>
+      <td style="padding:6px 10px;border:1px solid #ddd">${pp.nombre}</td>
+      <td style="padding:6px 10px;border:1px solid #ddd">${pp.pres}</td>
+      <td style="padding:6px 10px;text-align:center;border:1px solid #ddd">${pr.bultos}</td>
+      <td style="padding:6px 10px;text-align:center;border:1px solid #ddd">${pr.bultos*pp.uxb}</td>
+    </tr>`;
+  }).join('');
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Muestra ${m.cliente} - ${m.fecha}</title>
+  <style>body{font-family:Arial,sans-serif;margin:40px;color:#222;font-size:13px}table{border-collapse:collapse;width:100%}@media print{button{display:none}}</style>
+  </head><body>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
+    <div><h1 style="margin:0;color:#6A1B9A;font-size:22px">Pin Up Clean</h1>
+    <div style="color:#888;font-size:12px">INAP SRL — Godoy Cruz, Mendoza</div></div>
+    <div style="text-align:right">
+      <div style="font-size:18px;font-weight:700">Remito de Muestra</div>
+      <div style="background:#F3E5F5;color:#6A1B9A;padding:2px 10px;border-radius:10px;font-size:12px;font-weight:700;display:inline-block;margin-top:4px">SIN VALOR COMERCIAL</div>
+      <div style="color:#888;margin-top:4px">${m.fecha}</div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;padding:14px;background:#fafafa;border-radius:6px;border:1px solid #e5e7eb">
+    <div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Destinatario</div><div style="font-weight:700;font-size:15px">${m.cliente}</div></div>
+    <div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Provincia</div><div>${m.provincia||'—'}</div></div>
+    ${m.direccion_entrega?`<div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Dirección</div><div>${m.direccion_entrega}</div></div>`:''}
+    ${m.contacto_entrega?`<div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Contacto</div><div>${m.contacto_entrega}</div></div>`:''}
+    ${m.notas?`<div style="grid-column:1/-1"><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Notas</div><div>${m.notas}</div></div>`:''}
+  </div>
+  <table>
+    <thead><tr>
+      <th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:left">Producto</th>
+      <th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:left">Pres.</th>
+      <th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:center">Bultos</th>
+      <th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:center">Unidades</th>
+    </tr></thead>
+    <tbody>${prodRows}</tbody>
+  </table>
+  <div style="margin-top:24px;display:flex;justify-content:space-between;color:#888;font-size:11px">
+    <div>Total: ${tb} bultos</div>
+    <div>Generado por pinupsys.com · ${new Date().toLocaleDateString('es-AR')}</div>
+  </div>
+  <div style="margin-top:20px;text-align:center">
+    <button onclick="window.print()" style="padding:10px 24px;background:#6A1B9A;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨 Imprimir / Guardar PDF</button>
+  </div>
+  </body></html>`;
+  const win=window.open('','_blank');
+  win.document.write(html);
+  win.document.close();
+}
+
+
 </body>
 </html>
