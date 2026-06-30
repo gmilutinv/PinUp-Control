@@ -262,6 +262,7 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
     <div id="tab-proyeccion" style="display:none"></div>
     <div id="tab-admin" style="display:none"></div>
     <div id="tab-stock" style="display:none"></div>
+    <div id="tab-proyprod" style="display:none"></div>
   </div>
 </div>
 
@@ -554,6 +555,7 @@ function buildTabs(){
     {id:'proyeccion',label:'📅 Proyección',roles:['admin','comercial']},
     {id:'admin',label:'⚙️ Admin',roles:['admin']},
     {id:'stock',label:'📦 Stock',roles:['admin']},
+    {id:'proyprod',label:'🏭 Proy. Producción',roles:['admin']},
   ];
   const visible=tabs.filter(t=>t.roles.includes(rol));
   document.getElementById('main-tabs').innerHTML=visible.map((t,i)=>`
@@ -562,7 +564,7 @@ function buildTabs(){
 }
 
 function showTab(t){
-  ['nuevo','pedidos','muestras','cobros','estadisticas','resumen','proyeccion','admin','stock'].forEach(tab=>{
+  ['nuevo','pedidos','muestras','cobros','estadisticas','resumen','proyeccion','admin','stock','proyprod'].forEach(tab=>{
     const el=document.getElementById('tab-'+tab);
     if(el)el.style.display=tab===t?'block':'none';
   });
@@ -577,6 +579,7 @@ function showTab(t){
   if(t==='proyeccion')setTimeout(renderProyeccion, 50);
   if(t==='admin')renderAdmin();
   if(t==='stock')renderStock();
+  if(t==='proyprod')renderProyProduccion();
   if(t==='nuevo')renderNuevo();
 }
 
@@ -1371,6 +1374,117 @@ async function renderStock(){
   </div>`;
 }
 
+
+
+function renderProyProduccion(){
+  const tab = document.getElementById('tab-proyprod');
+  if(currentProfile.rol!=='admin'){ tab.innerHTML='<div class="empty">Sin acceso.</div>'; return; }
+
+  // Determine "mes anterior" (calendar month before current)
+  const now = new Date();
+  let mesAntYear = now.getFullYear();
+  let mesAntMonth = now.getMonth(); // 0-indexed; this is "previous month" since getMonth() is current-1 in 0-index terms... let's be explicit
+  mesAntMonth = now.getMonth() - 1;
+  if(mesAntMonth < 0){ mesAntMonth = 11; mesAntYear -= 1; }
+  const mesAntKey = `${mesAntYear}-${String(mesAntMonth+1).padStart(2,'0')}`;
+  const mesAntLabel = new Date(mesAntYear, mesAntMonth, 1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+
+  // Sum bultos and unidades by product for that calendar month, across ALL pedidos (admin sees everything)
+  const baseMap = {}; // {prod_id: {bultos, unidades}}
+  PRODS.forEach(p=>{ baseMap[p.id] = {bultos:0, unidades:0}; });
+  pedidos.forEach(p=>{
+    if(!p.fecha || !p.fecha.startsWith(mesAntKey)) return;
+    (p.productos||[]).forEach(pr=>{
+      const pp = PRODS.find(x=>x.id===pr.pid);
+      if(!pp) return;
+      baseMap[pp.id].bultos += pr.bultos||0;
+      baseMap[pp.id].unidades += (pr.bultos||0)*pp.uxb;
+    });
+  });
+
+  // Read current % values from inputs if they exist (to preserve state on re-render), else default
+  const pctGeneralEl = document.getElementById('proy-pct-general');
+  const pctGeneral = pctGeneralEl ? parseFloat(pctGeneralEl.value)||0 : 0;
+
+  const rows = PRODS.map(p=>{
+    const base = baseMap[p.id]||{bultos:0,unidades:0};
+    const overrideEl = document.getElementById('proy-pct-'+p.id);
+    const overrideVal = overrideEl ? overrideEl.value : '';
+    const pctEfectivo = overrideVal!=='' ? parseFloat(overrideVal)||0 : pctGeneral;
+    const bultosProy = base.bultos * (1+pctEfectivo/100);
+    const unidProy = base.unidades * (1+pctEfectivo/100);
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:10px 12px;font-weight:500">${p.nombre}</td>
+      <td style="padding:10px 12px;color:#888;font-size:13px">${p.pres}</td>
+      <td style="padding:10px 12px;text-align:center;color:#666">${base.bultos}</td>
+      <td style="padding:10px 12px;text-align:center;color:#666">${base.unidades}</td>
+      <td style="padding:8px;text-align:center">
+        <input type="number" id="proy-pct-${p.id}" placeholder="${pctGeneral}" value="${overrideVal}"
+          step="1" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-size:12px;text-align:center"
+          oninput="renderProyProduccion()" onfocus="this.select()">
+        <span style="font-size:11px;color:#888">%</span>
+      </td>
+      <td style="padding:10px 12px;text-align:center;font-weight:700;color:var(--green)">${bultosProy.toFixed(1)}</td>
+      <td style="padding:10px 12px;text-align:center;font-weight:600;color:var(--green)">${Math.round(unidProy)}</td>
+    </tr>`;
+  }).join('');
+
+  const totalBultosBase = Object.values(baseMap).reduce((a,v)=>a+v.bultos,0);
+  const totalBultosProy = PRODS.reduce((a,p)=>{
+    const base = baseMap[p.id]||{bultos:0};
+    const overrideEl = document.getElementById('proy-pct-'+p.id);
+    const overrideVal = overrideEl ? overrideEl.value : '';
+    const pctEfectivo = overrideVal!=='' ? parseFloat(overrideVal)||0 : pctGeneral;
+    return a + base.bultos*(1+pctEfectivo/100);
+  },0);
+
+  tab.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:6px">
+        <h2 style="margin:0">🏭 Proyección de Producción</h2>
+        <div style="font-size:12px;color:#888">Base: ventas de <strong>${mesAntLabel}</strong></div>
+      </div>
+      <p style="font-size:12px;color:#888;margin-bottom:16px">Calcula cuánto producir este mes en base a lo vendido el mes pasado, aplicando un % de crecimiento esperado. Podés ajustar el % por producto si alguno crece distinto al resto.</p>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:12px;background:var(--cream);border-radius:8px;flex-wrap:wrap">
+        <label style="font-size:13px;font-weight:600">% de crecimiento general</label>
+        <input type="number" id="proy-pct-general" value="${pctGeneral}" step="1"
+          style="width:90px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:center"
+          oninput="renderProyProduccion()">
+        <span style="font-size:13px;color:#888">%</span>
+        <span style="font-size:11px;color:#aaa;margin-left:8px">Se aplica a todos los productos salvo que pongas un % distinto en su fila.</span>
+        ${pctGeneral||Array.from({length:PRODS.length}).some((_,i)=>document.getElementById('proy-pct-'+PRODS[i].id)?.value)?`<button class="btn-sm" style="background:white;border:1px solid var(--border);margin-left:auto" onclick="limpiarProyProduccion()">✕ Reset</button>`:''}
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:var(--cream)">
+          <th style="padding:10px 12px;text-align:left">Producto</th>
+          <th style="padding:10px 12px;text-align:left">Pres.</th>
+          <th style="padding:10px 12px;text-align:center">Bultos mes ant.</th>
+          <th style="padding:10px 12px;text-align:center">Unid. mes ant.</th>
+          <th style="padding:10px 12px;text-align:center">% crecimiento</th>
+          <th style="padding:10px 12px;text-align:center">Bultos a producir</th>
+          <th style="padding:10px 12px;text-align:center">Unid. a producir</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr style="background:var(--cream);font-weight:700">
+            <td colspan="2" style="padding:10px 12px">TOTAL</td>
+            <td style="padding:10px 12px;text-align:center">${totalBultosBase}</td>
+            <td></td><td></td>
+            <td style="padding:10px 12px;text-align:center;color:var(--green)">${totalBultosProy.toFixed(1)}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>`;
+}
+
+function limpiarProyProduccion(){
+  const g = document.getElementById('proy-pct-general'); if(g) g.value='0';
+  PRODS.forEach(p=>{ const el=document.getElementById('proy-pct-'+p.id); if(el) el.value=''; });
+  renderProyProduccion();
+}
 
 async function renderAdmin(){
   if(currentProfile.rol!=='admin'){document.getElementById('tab-admin').innerHTML='<div class="empty">Sin acceso.</div>';return;}
