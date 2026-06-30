@@ -1380,20 +1380,44 @@ function renderProyProduccion(){
   const tab = document.getElementById('tab-proyprod');
   if(currentProfile.rol!=='admin'){ tab.innerHTML='<div class="empty">Sin acceso.</div>'; return; }
 
-  // Determine "mes anterior" (calendar month before current)
-  const now = new Date();
-  let mesAntYear = now.getFullYear();
-  let mesAntMonth = now.getMonth(); // 0-indexed; this is "previous month" since getMonth() is current-1 in 0-index terms... let's be explicit
-  mesAntMonth = now.getMonth() - 1;
-  if(mesAntMonth < 0){ mesAntMonth = 11; mesAntYear -= 1; }
-  const mesAntKey = `${mesAntYear}-${String(mesAntMonth+1).padStart(2,'0')}`;
-  const mesAntLabel = new Date(mesAntYear, mesAntMonth, 1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+  // Build list of available months from all pedidos
+  const mesesDisponibles = [...new Set(pedidos.filter(p=>p.fecha).map(p=>p.fecha.substring(0,7)))].sort();
 
-  // Sum bultos and unidades by product for that calendar month, across ALL pedidos (admin sees everything)
-  const baseMap = {}; // {prod_id: {bultos, unidades}}
+  // Determine selected meses: read from checkboxes if rendered, else default to mes anterior
+  let mesesSeleccionados = [];
+  const checkboxes = document.querySelectorAll('.proy-mes-check');
+  if(checkboxes.length){
+    mesesSeleccionados = [...checkboxes].filter(c=>c.checked).map(c=>c.value);
+  } else {
+    const now = new Date();
+    let y = now.getFullYear(), m = now.getMonth()-1;
+    if(m < 0){ m = 11; y -= 1; }
+    const defaultKey = `${y}-${String(m+1).padStart(2,'0')}`;
+    mesesSeleccionados = mesesDisponibles.includes(defaultKey) ? [defaultKey] : (mesesDisponibles.length?[mesesDisponibles[mesesDisponibles.length-1]]:[]);
+  }
+
+  const todoSeleccionado = mesesSeleccionados.length === mesesDisponibles.length && mesesDisponibles.length>0;
+
+  const mesLabel = (k)=>{
+    const [y,m] = k.split('-').map(Number);
+    return new Date(y, m-1, 1).toLocaleDateString('es-AR',{month:'short',year:'numeric'});
+  };
+
+  const baseLabel = mesesSeleccionados.length===0
+    ? 'ningún mes seleccionado'
+    : todoSeleccionado
+      ? 'todo el historial'
+      : mesesSeleccionados.length===1
+        ? mesLabel(mesesSeleccionados[0])
+        : `${mesesSeleccionados.length} meses seleccionados (${mesesSeleccionados.map(mesLabel).join(', ')})`;
+
+  // Sum bultos and unidades by product for the selected months, across ALL pedidos (admin sees everything)
+  const baseMap = {};
   PRODS.forEach(p=>{ baseMap[p.id] = {bultos:0, unidades:0}; });
   pedidos.forEach(p=>{
-    if(!p.fecha || !p.fecha.startsWith(mesAntKey)) return;
+    if(!p.fecha) return;
+    const key = p.fecha.substring(0,7);
+    if(!mesesSeleccionados.includes(key)) return;
     (p.productos||[]).forEach(pr=>{
       const pp = PRODS.find(x=>x.id===pr.pid);
       if(!pp) return;
@@ -1402,7 +1426,6 @@ function renderProyProduccion(){
     });
   });
 
-  // Read current % values from inputs if they exist (to preserve state on re-render), else default
   const pctGeneralEl = document.getElementById('proy-pct-general');
   const pctGeneral = pctGeneralEl ? parseFloat(pctGeneralEl.value)||0 : 0;
 
@@ -1438,13 +1461,30 @@ function renderProyProduccion(){
     return a + base.bultos*(1+pctEfectivo/100);
   },0);
 
+  const mesesChecks = mesesDisponibles.map(k=>`
+    <label style="display:flex;align-items:center;gap:5px;padding:4px 8px;background:white;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px">
+      <input type="checkbox" class="proy-mes-check" value="${k}" ${mesesSeleccionados.includes(k)?'checked':''} onchange="renderProyProduccion()">
+      ${mesLabel(k)}
+    </label>`).join('');
+
   tab.innerHTML = `
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:6px">
         <h2 style="margin:0">🏭 Proyección de Producción</h2>
-        <div style="font-size:12px;color:#888">Base: ventas de <strong>${mesAntLabel}</strong></div>
+        <div style="font-size:12px;color:#888">Base: <strong>${baseLabel}</strong></div>
       </div>
-      <p style="font-size:12px;color:#888;margin-bottom:16px">Calcula cuánto producir este mes en base a lo vendido el mes pasado, aplicando un % de crecimiento esperado. Podés ajustar el % por producto si alguno crece distinto al resto.</p>
+      <p style="font-size:12px;color:#888;margin-bottom:14px">Calcula cuánto producir en base a lo vendido en el período que elijas, aplicando un % de crecimiento esperado. Podés ajustar el % por producto si alguno crece distinto al resto.</p>
+
+      <div style="margin-bottom:16px;padding:12px;background:var(--cream);border-radius:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+          <label style="font-size:13px;font-weight:600">Período base</label>
+          <div style="display:flex;gap:6px">
+            <button class="btn-sm" style="background:white;border:1px solid var(--border)" onclick="seleccionarTodosMeses()">Seleccionar todo</button>
+            <button class="btn-sm" style="background:white;border:1px solid var(--border)" onclick="limpiarMesesProy()">Ninguno</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${mesesChecks || '<span style="font-size:12px;color:#888">No hay pedidos cargados todavía.</span>'}</div>
+      </div>
 
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:12px;background:var(--cream);border-radius:8px;flex-wrap:wrap">
         <label style="font-size:13px;font-weight:600">% de crecimiento general</label>
@@ -1453,15 +1493,15 @@ function renderProyProduccion(){
           oninput="renderProyProduccion()">
         <span style="font-size:13px;color:#888">%</span>
         <span style="font-size:11px;color:#aaa;margin-left:8px">Se aplica a todos los productos salvo que pongas un % distinto en su fila.</span>
-        ${pctGeneral||Array.from({length:PRODS.length}).some((_,i)=>document.getElementById('proy-pct-'+PRODS[i].id)?.value)?`<button class="btn-sm" style="background:white;border:1px solid var(--border);margin-left:auto" onclick="limpiarProyProduccion()">✕ Reset</button>`:''}
+        ${pctGeneral||Array.from({length:PRODS.length}).some((_,i)=>document.getElementById('proy-pct-'+PRODS[i].id)?.value)?`<button class="btn-sm" style="background:white;border:1px solid var(--border);margin-left:auto" onclick="limpiarProyProduccion()">✕ Reset %</button>`:''}
       </div>
 
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="background:var(--cream)">
           <th style="padding:10px 12px;text-align:left">Producto</th>
           <th style="padding:10px 12px;text-align:left">Pres.</th>
-          <th style="padding:10px 12px;text-align:center">Bultos mes ant.</th>
-          <th style="padding:10px 12px;text-align:center">Unid. mes ant.</th>
+          <th style="padding:10px 12px;text-align:center">Bultos período</th>
+          <th style="padding:10px 12px;text-align:center">Unid. período</th>
           <th style="padding:10px 12px;text-align:center">% crecimiento</th>
           <th style="padding:10px 12px;text-align:center">Bultos a producir</th>
           <th style="padding:10px 12px;text-align:center">Unid. a producir</th>
@@ -1478,6 +1518,16 @@ function renderProyProduccion(){
         </tfoot>
       </table>
     </div>`;
+}
+
+function seleccionarTodosMeses(){
+  document.querySelectorAll('.proy-mes-check').forEach(c=>c.checked=true);
+  renderProyProduccion();
+}
+
+function limpiarMesesProy(){
+  document.querySelectorAll('.proy-mes-check').forEach(c=>c.checked=false);
+  renderProyProduccion();
 }
 
 function limpiarProyProduccion(){
