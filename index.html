@@ -1219,7 +1219,7 @@ function renderStats(){
   if(charts.clientes)charts.clientes.destroy();
   charts.clientes=new Chart(document.getElementById('chart-clientes'),{type:'bar',data:{labels:Object.keys(cliMap),datasets:[{label:'Bultos',data:Object.values(cliMap),backgroundColor:COLORS,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#f0e8dc'}},x:{grid:{display:false}}}}});
   if(charts.meses)charts.meses.destroy();
-  charts.meses=new Chart(document.getElementById('chart-meses'),{type:'line',data:{labels:mKeys,datasets:[{label:'Bultos',data:mKeys.map(k=>mesesMap[k]),borderColor:'#D32F2F',backgroundColor:'rgba(211,47,47,.1)',fill:true,tension:.3,pointRadius:4,pointBackgroundColor:'#D32F2F'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true},x:{grid:{display:false}}}}});
+  charts.meses=new Chart(document.getElementById('chart-meses'),{type:'bar',data:{labels:mKeys,datasets:[{label:'Bultos',data:mKeys.map(k=>mesesMap[k]),backgroundColor:'#D32F2F',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#f0e8dc'}},x:{grid:{display:false}}}}});
   if(charts.provBultos)charts.provBultos.destroy();
   charts.provBultos=new Chart(document.getElementById('chart-prov-bultos'),{type:'bar',data:{labels:provKeys,datasets:[{label:'Bultos',data:provKeys.map(k=>provBultosMap[k]),backgroundColor:COLORS,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#f0e8dc'}},x:{grid:{display:false}}}}});
   if(charts.provMonto)charts.provMonto.destroy();
