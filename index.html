@@ -550,12 +550,12 @@ function buildTabs(){
     {id:'pedidos',label:'📦 Pedidos',roles:['admin','comercial','produccion','compras']},
     {id:'muestras',label:'🎁 Muestras',roles:['admin','comercial','produccion']},
     {id:'cobros',label:'💰 Cobros',roles:['admin','comercial']},
-    {id:'estadisticas',label:'📊 Stats',roles:['admin','comercial']},
+    {id:'estadisticas',label:'📊 Stats',roles:['admin','comercial','produccion']},
     {id:'resumen',label:'📋 Resumen',roles:['admin','comercial']},
     {id:'proyeccion',label:'📅 Proyección',roles:['admin','comercial']},
     {id:'admin',label:'⚙️ Admin',roles:['admin']},
     {id:'stock',label:'📦 Stock',roles:['admin']},
-    {id:'proyprod',label:'🏭 Proy. Producción',roles:['admin']},
+    {id:'proyprod',label:'🏭 Proy. Producción',roles:['admin','produccion']},
   ];
   const visible=tabs.filter(t=>t.roles.includes(rol));
   document.getElementById('main-tabs').innerHTML=visible.map((t,i)=>`
