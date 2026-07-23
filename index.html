@@ -1291,9 +1291,9 @@ async function enviarSolicitud(){
     if(!res.ok)throw new Error();
     
     // Send email via Resend directly
-    await fetch('https://api.resend.com/emails',{
+    await fetch(`${SUPA_URL}/functions/v1/enviar-email`,{
       method:'POST',
-      headers:{'Authorization':'Bearer re_7qaxmdTE_6MiHJZC9nBZLxa2BKZuGy2nf','Content-Type':'application/json'},
+      headers:{'Authorization':'Bearer '+supaToken,'Content-Type':'application/json'},
       body:JSON.stringify({
         from:'onboarding@resend.dev',
         to:'gmilutinv@gmail.com',
@@ -1378,7 +1378,7 @@ async function renderStock(){
 
 function renderProyProduccion(){
   const tab = document.getElementById('tab-proyprod');
-  if(currentProfile.rol!=='admin'){ tab.innerHTML='<div class="empty">Sin acceso.</div>'; return; }
+  if(!['admin','produccion'].includes(currentProfile.rol)){ tab.innerHTML='<div class="empty">Sin acceso.</div>'; return; }
 
   // Build list of available months from all pedidos
   const mesesDisponibles = [...new Set(pedidos.filter(p=>p.fecha).map(p=>p.fecha.substring(0,7)))].sort();
