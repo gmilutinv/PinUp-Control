@@ -514,7 +514,7 @@ async function logout(){
   document.getElementById('login-screen').style.display='flex';
 }
 
-function showApp(){
+async function showApp(){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('no-provincia-screen').style.display='none';
   // Check province BEFORE showing app
@@ -1726,41 +1726,48 @@ async function renderAdmin(){
           <th style="padding:8px 12px;text-align:right">Precio actual/u</th>
           <th style="padding:8px 12px;text-align:right" id="th-nuevo">Precio nuevo/u</th>
         </tr></thead>
-        <tbody id="precios-tbody">
-          ${PRODS.map(p=>{
-            const precioActual = PRECIOS_BASE[p.id]||0;
-            return \`<tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:8px 12px;font-weight:500">\${p.nombre}</td>
-              <td style="padding:8px 12px;color:#888">\${p.pres}</td>
-              <td style="padding:8px 12px;text-align:right">\${fmt(precioActual)}</td>
-              <td style="padding:8px 12px;text-align:right;color:var(--green)" id="precio-nuevo-\${p.id}">—</td>
-            </tr>\`;
-          }).join('')}
-        </tbody>
-      </table>
-
-      <div style="margin-top:20px">
-        <h3 style="font-size:13px;font-weight:600;margin-bottom:10px">Descuentos por cliente</h3>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <thead><tr style="background:var(--cream)">
-            <th style="padding:8px 12px;text-align:left">Cliente</th>
-            <th style="padding:8px 12px;text-align:center">Desc. 1</th>
-            <th style="padding:8px 12px;text-align:center">Desc. 2</th>
-            <th style="padding:8px 12px;text-align:center">Desc. 3</th>
-          </tr></thead>
-          <tbody>
-            ${Object.entries(DESCUENTOS_CLIENTE).map(([cli, desc])=>\`<tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:8px 12px;font-weight:500">\${cli}</td>
-              <td style="padding:8px 12px;text-align:center">\${((desc.d1||0)*100).toFixed(0)}%</td>
-              <td style="padding:8px 12px;text-align:center">\${((desc.d2||0)*100).toFixed(0)}%</td>
-              <td style="padding:8px 12px;text-align:center">\${((desc.d3||0)*100).toFixed(0)}%</td>
-            </tr>\`).join('')}
-          </tbody>
+        <tbody id="precios-tbody"></tbody>
         </table>
-      </div>
-    </div>\`;
+        <div id="descuentos-tabla" style="margin-top:20px">
+          <h3 style="font-size:13px;font-weight:600;margin-bottom:10px">Descuentos por cliente</h3>
+        </div>
+    </div>`;
+  renderPreciosTabla();
 }
 
+
+function renderPreciosTabla(){
+  const tbody = document.getElementById('precios-tbody');
+  if(!tbody) return;
+  tbody.innerHTML = PRODS.map(p=>{
+    const precioActual = PRECIOS_BASE[p.id]||0;
+    return '<tr style="border-bottom:1px solid var(--border)">'
+      + '<td style="padding:8px 12px;font-weight:500">'+p.nombre+'</td>'
+      + '<td style="padding:8px 12px;color:#888">'+p.pres+'</td>'
+      + '<td style="padding:8px 12px;text-align:right">'+fmt(precioActual)+'</td>'
+      + '<td style="padding:8px 12px;text-align:right;color:var(--green)" id="precio-nuevo-'+p.id+'">—</td>'
+      + '</tr>';
+  }).join('');
+
+  const descDiv = document.getElementById('descuentos-tabla');
+  if(!descDiv) return;
+  const rows = Object.entries(DESCUENTOS_CLIENTE).map(([cli, desc])=>
+    '<tr style="border-bottom:1px solid var(--border)">'
+    + '<td style="padding:8px 12px;font-weight:500">'+cli+'</td>'
+    + '<td style="padding:8px 12px;text-align:center">'+((desc.d1||0)*100).toFixed(0)+'%</td>'
+    + '<td style="padding:8px 12px;text-align:center">'+((desc.d2||0)*100).toFixed(0)+'%</td>'
+    + '<td style="padding:8px 12px;text-align:center">'+((desc.d3||0)*100).toFixed(0)+'%</td>'
+    + '</tr>'
+  ).join('');
+  descDiv.innerHTML = '<h3 style="font-size:13px;font-weight:600;margin-bottom:10px">Descuentos por cliente</h3>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+    + '<thead><tr style="background:var(--cream)">'
+    + '<th style="padding:8px 12px;text-align:left">Cliente</th>'
+    + '<th style="padding:8px 12px;text-align:center">Desc. 1</th>'
+    + '<th style="padding:8px 12px;text-align:center">Desc. 2</th>'
+    + '<th style="padding:8px 12px;text-align:center">Desc. 3</th>'
+    + '</tr></thead><tbody>'+rows+'</tbody></table>';
+}
 
 function previewAumento(){
   const pct = parseFloat(document.getElementById('precio-aumento-pct')?.value)||0;
@@ -1773,13 +1780,13 @@ function previewAumento(){
     el.style.color = pct>0?'var(--green)':pct<0?'var(--red)':'#888';
   });
   const thNuevo = document.getElementById('th-nuevo');
-  if(thNuevo) thNuevo.textContent = pct!==0 ? `Precio nuevo/u (+${pct}%)` : 'Precio nuevo/u';
+  if(thNuevo) thNuevo.textContent = pct!==0 ? 'Precio nuevo/u (+'+pct+'%)' : 'Precio nuevo/u';
 }
 
 async function aplicarAumento(){
   const pct = parseFloat(document.getElementById('precio-aumento-pct')?.value)||0;
   if(pct === 0){ alert('Ingresá un % de aumento primero.'); return; }
-  if(!confirm(`¿Aplicar un aumento de ${pct}% a todos los precios base?`)) return;
+  if(!confirm('¿Aplicar un aumento de '+pct+'% a todos los precios base?')) return;
 
   const status = document.getElementById('aumento-status');
   if(status) status.textContent = 'Guardando...';
@@ -1788,7 +1795,7 @@ async function aplicarAumento(){
     for(const p of PRODS){
       const actual = PRECIOS_BASE[p.id]||0;
       const nuevo = Math.round(actual * (1 + pct/100) * 100) / 100;
-      await fetch(`${SUPA_URL}/rest/v1/precios_base?prod_id=eq.${p.id}`,{
+      await fetch(SUPA_URL+'/rest/v1/precios_base?prod_id=eq.'+p.id,{
         method:'PATCH',
         headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+supaToken,'Content-Type':'application/json','Prefer':'return=minimal'},
         body: JSON.stringify({precio_unitario: nuevo, updated_at: new Date().toISOString()})
@@ -1796,10 +1803,10 @@ async function aplicarAumento(){
       PRECIOS_BASE[p.id] = nuevo;
     }
     recalcularPreciosBulto();
-    if(status) status.textContent = `✓ Precios actualizados +${pct}%`;
+    if(status) status.textContent = '✓ Precios actualizados +'+pct+'%';
     document.getElementById('precio-aumento-pct').value = '0';
     renderAdmin();
-    alert(`✓ Aumento de ${pct}% aplicado correctamente.`);
+    alert('✓ Aumento de '+pct+'% aplicado correctamente.');
   }catch(e){
     if(status) status.textContent = 'Error al guardar';
     alert('Error al actualizar los precios. Revisá la consola.');
