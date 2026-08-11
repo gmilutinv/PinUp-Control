@@ -1412,91 +1412,123 @@ function renderHistorial(){
     tab.innerHTML='<div class="empty">Sin acceso.</div>'; return;
   }
 
-  // Get selected cliente
   const clienteEl = document.getElementById('hist-cliente');
   const clienteSeleccionado = clienteEl ? clienteEl.value : '';
-
-  // Build list of all clients from pedidos
   const clientes = [...new Set(pedidos.map(p=>p.cliente).filter(Boolean))].sort();
+  const pedidosCliente = clienteSeleccionado ? pedidos.filter(p=>p.cliente===clienteSeleccionado) : [];
 
-  // Filter pedidos by client
-  const pedidosCliente = clienteSeleccionado
-    ? pedidos.filter(p=>p.cliente===clienteSeleccionado)
-    : [];
-
-  // Group by month
+  // Build product totals per month: {mes_key: {prod_id: {bultos, unidades}}}
   const mesesMap = {};
   pedidosCliente.forEach(p=>{
     if(!p.fecha) return;
     const key = p.fecha.substring(0,7);
     const [y,m] = key.split('-').map(Number);
     const label = new Date(y,m-1,1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});
-    if(!mesesMap[key]) mesesMap[key] = {label, bultos:0, monto:0, pedidos:0};
-    mesesMap[key].bultos += totalBultos(p);
-    mesesMap[key].monto  += totalMonto(p);
-    mesesMap[key].pedidos++;
+    if(!mesesMap[key]) mesesMap[key] = {label, prods:{}};
+    (p.productos||[]).forEach(pr=>{
+      const pp = PRODS.find(x=>x.id===pr.pid); if(!pp) return;
+      const prodKey = pr.pid+'_'+pp.pres;
+      if(!mesesMap[key].prods[prodKey]) mesesMap[key].prods[prodKey] = {nombre:pp.nombre, pres:pp.pres, pid:pr.pid, bultos:0, unidades:0};
+      mesesMap[key].prods[prodKey].bultos   += pr.bultos||0;
+      mesesMap[key].prods[prodKey].unidades += (pr.bultos||0)*pp.uxb;
+    });
+  });
+
+  // Build totals per product across all months
+  const totalPorProd = {};
+  pedidosCliente.forEach(p=>{
+    (p.productos||[]).forEach(pr=>{
+      const pp = PRODS.find(x=>x.id===pr.pid); if(!pp) return;
+      const prodKey = pr.pid+'_'+pp.pres;
+      if(!totalPorProd[prodKey]) totalPorProd[prodKey] = {nombre:pp.nombre, pres:pp.pres, bultos:0, unidades:0};
+      totalPorProd[prodKey].bultos   += pr.bultos||0;
+      totalPorProd[prodKey].unidades += (pr.bultos||0)*pp.uxb;
+    });
   });
 
   const meses = Object.keys(mesesMap).sort();
-  const totalBultosAcum = meses.reduce((a,k)=>a+mesesMap[k].bultos,0);
-  const totalMontoAcum  = meses.reduce((a,k)=>a+mesesMap[k].monto,0);
-  const totalPedidos    = meses.reduce((a,k)=>a+mesesMap[k].pedidos,0);
+  const totalBultosAcum = Object.values(totalPorProd).reduce((a,v)=>a+v.bultos,0);
+  const totalPedidos = pedidosCliente.length;
 
-  const mesRows = meses.map(k=>`
-    <tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:10px 12px;font-weight:500;text-transform:capitalize">${mesesMap[k].label}</td>
-      <td style="padding:10px 12px;text-align:center">${mesesMap[k].pedidos}</td>
-      <td style="padding:10px 12px;text-align:center;font-weight:600">${mesesMap[k].bultos}</td>
-      <td style="padding:10px 12px;text-align:right;color:var(--green);font-weight:600">${currentProfile.rol==='produccion'?'—':fmt(mesesMap[k].monto)}</td>
-    </tr>`).join('');
+  // Build mes sections
+  const mesSections = meses.map(k=>{
+    const prods = Object.values(mesesMap[k].prods).filter(v=>v.bultos>0);
+    if(!prods.length) return '';
+    const prodRows = prods.map(v=>'<tr style="border-bottom:1px solid var(--border)">'+
+      '<td style="padding:8px 12px;padding-left:24px;color:#555">'+v.nombre+'</td>'+
+      '<td style="padding:8px 12px;color:#888;font-size:12px">'+v.pres+'</td>'+
+      '<td style="padding:8px 12px;text-align:center;font-weight:600">'+v.bultos+'</td>'+
+      '<td style="padding:8px 12px;text-align:center;color:#666">'+v.unidades+'</td>'+
+      '</tr>').join('');
+    const mesBultos = prods.reduce((a,v)=>a+v.bultos,0);
+    return '<tr style="background:var(--cream)">'+
+      '<td style="padding:10px 12px;font-weight:700;text-transform:capitalize" colspan="2">'+mesesMap[k].label+'</td>'+
+      '<td style="padding:10px 12px;text-align:center;font-weight:700">'+mesBultos+'</td>'+
+      '<td></td></tr>'+prodRows;
+  }).join('');
+
+  // Build totals section
+  const totalRows = Object.values(totalPorProd).filter(v=>v.bultos>0).map(v=>
+    '<tr style="border-bottom:1px solid var(--border)">'+
+    '<td style="padding:8px 12px;padding-left:24px;color:#555">'+v.nombre+'</td>'+
+    '<td style="padding:8px 12px;color:#888;font-size:12px">'+v.pres+'</td>'+
+    '<td style="padding:8px 12px;text-align:center;font-weight:600">'+v.bultos+'</td>'+
+    '<td style="padding:8px 12px;text-align:center;color:#666">'+v.unidades+'</td>'+
+    '</tr>').join('');
 
   tab.innerHTML = `
     <div class="card">
       <h2 style="margin-bottom:16px">📋 Historial por Cliente</h2>
-
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
         <label style="font-size:13px;font-weight:600">Cliente</label>
         <select id="hist-cliente" onchange="renderHistorial()"
           style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;min-width:200px">
           <option value="">Seleccioná un cliente...</option>
-          ${clientes.map(c=>`<option value="${c}" ${c===clienteSeleccionado?'selected':''}>${c}</option>`).join('')}
+          ${clientes.map(c=>'<option value="'+c+'" '+(c===clienteSeleccionado?'selected':'')+'>'+c+'</option>').join('')}
         </select>
       </div>
 
       ${clienteSeleccionado ? `
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px">
           <div class="stat" style="border-radius:10px;border:1px solid var(--border);padding:16px">
-            <div class="label">Total pedidos</div>
-            <div class="value">${totalPedidos}</div>
+            <div class="label">Total pedidos</div><div class="value">${totalPedidos}</div>
           </div>
           <div class="stat" style="border-radius:10px;border:1px solid var(--border);padding:16px">
-            <div class="label">Total bultos</div>
-            <div class="value">${totalBultosAcum}</div>
+            <div class="label">Total bultos</div><div class="value">${totalBultosAcum}</div>
           </div>
-          ${currentProfile.rol!=='produccion'?`<div class="stat" style="border-radius:10px;border:1px solid var(--border);padding:16px">
-            <div class="label">Total facturado</div>
-            <div class="value" style="color:var(--green);font-size:18px">${fmt(totalMontoAcum)}</div>
-          </div>`:'<div></div>'}
         </div>
 
         ${meses.length ? `
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <thead><tr style="background:var(--cream)">
-            <th style="padding:10px 12px;text-align:left">Mes</th>
-            <th style="padding:10px 12px;text-align:center">Pedidos</th>
-            <th style="padding:10px 12px;text-align:center">Bultos</th>
-            ${currentProfile.rol!=='produccion'?'<th style="padding:10px 12px;text-align:right">Monto</th>':''}
-          </tr></thead>
-          <tbody>${mesRows}</tbody>
-          <tfoot>
-            <tr style="background:var(--cream);font-weight:700">
-              <td style="padding:10px 12px">TOTAL</td>
-              <td style="padding:10px 12px;text-align:center">${totalPedidos}</td>
+        <div style="margin-bottom:24px">
+          <h3 style="font-size:14px;font-weight:700;margin-bottom:10px">Detalle por mes</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:var(--cream)">
+              <th style="padding:10px 12px;text-align:left">Producto</th>
+              <th style="padding:10px 12px;text-align:left">Pres.</th>
+              <th style="padding:10px 12px;text-align:center">Bultos</th>
+              <th style="padding:10px 12px;text-align:center">Unidades</th>
+            </tr></thead>
+            <tbody>${mesSections}</tbody>
+          </table>
+        </div>
+        <div>
+          <h3 style="font-size:14px;font-weight:700;margin-bottom:10px">Total acumulado por producto</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:var(--cream)">
+              <th style="padding:10px 12px;text-align:left">Producto</th>
+              <th style="padding:10px 12px;text-align:left">Pres.</th>
+              <th style="padding:10px 12px;text-align:center">Bultos</th>
+              <th style="padding:10px 12px;text-align:center">Unidades</th>
+            </tr></thead>
+            <tbody>${totalRows}</tbody>
+            <tfoot><tr style="background:var(--cream);font-weight:700">
+              <td colspan="2" style="padding:10px 12px">TOTAL</td>
               <td style="padding:10px 12px;text-align:center">${totalBultosAcum}</td>
-              ${currentProfile.rol!=='produccion'?`<td style="padding:10px 12px;text-align:right;color:var(--green)">${fmt(totalMontoAcum)}</td>`:''}
-            </tr>
-          </tfoot>
-        </table>` : '<div class="empty">Este cliente no tiene pedidos registrados.</div>'}
+              <td></td>
+            </tr></tfoot>
+          </table>
+        </div>
+        ` : '<div class="empty">Este cliente no tiene pedidos registrados.</div>'}
       ` : '<div class="empty" style="padding:40px;text-align:center;color:#aaa">Seleccioná un cliente para ver su historial.</div>'}
     </div>`;
 }
