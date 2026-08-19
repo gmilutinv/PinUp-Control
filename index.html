@@ -1242,10 +1242,11 @@ function renderStats(){
       </tbody></table>
     </div>
     <div class="card"><h2>Totales por producto</h2>
-      <table class="stbl"><thead><tr><th>Producto</th><th>Pres.</th><th>Bultos</th><th>Unidades</th><th>Pedidos</th></tr></thead>
-      <tbody>${sorted.map(([k,v])=>`<tr><td>${v.nombre}</td><td>${v.pres}</td><td class="num big-num">${v.bultos}</td><td class="num">${v.unids}</td><td class="num">${v.count}</td></tr>`).join('')}</tbody>
-      </table></div>`;
+      <div id="stats-prod-table"></div>
+    </div>`;
 
+  window._statsSorted = sorted;
+  renderProdTable('bultos','desc');
   if(charts.torta)charts.torta.destroy();
   charts.torta=new Chart(document.getElementById('chart-torta'),{type:'doughnut',data:{labels:sorted.slice(0,8).map(([k])=>k),datasets:[{data:sorted.slice(0,8).map(([,v])=>v.bultos),backgroundColor:COLORS,borderWidth:2,borderColor:'#fff'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:10}}}}});
   if(charts.clientes)charts.clientes.destroy();
@@ -1256,6 +1257,48 @@ function renderStats(){
   charts.provBultos=new Chart(document.getElementById('chart-prov-bultos'),{type:'bar',data:{labels:provKeys,datasets:[{label:'Bultos',data:provKeys.map(k=>provBultosMap[k]),backgroundColor:COLORS,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#f0e8dc'}},x:{grid:{display:false}}}}});
   if(charts.provMonto)charts.provMonto.destroy();
   charts.provMonto=new Chart(document.getElementById('chart-prov-monto'),{type:'bar',data:{labels:provKeys,datasets:[{label:'Monto $',data:provKeys.map(k=>provMontoMap[k]),backgroundColor:COLORS.map(c=>c+'CC'),borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt(ctx.raw)}}},scales:{y:{beginAtZero:true,grid:{color:'#f0e8dc'},ticks:{callback:v=>fmt(v)}},x:{grid:{display:false}}}}});
+}
+
+
+let _prodSortCol = 'bultos';
+let _prodSortDir = 'desc';
+
+function renderProdTable(col, dir){
+  if(col) _prodSortCol = col;
+  if(dir) _prodSortDir = dir;
+  else _prodSortDir = (_prodSortCol === col && _prodSortDir === 'desc') ? 'asc' : 'desc';
+
+  const container = document.getElementById('stats-prod-table');
+  if(!container || !window._statsSorted) return;
+
+  const data = [...window._statsSorted];
+  data.sort((a,b)=>{
+    const av = _prodSortCol==='bultos' ? a[1].bultos : _prodSortCol==='unids' ? a[1].unids : _prodSortCol==='count' ? a[1].count : _prodSortCol==='nombre' ? a[1].nombre.localeCompare(b[1].nombre) : 0;
+    const bv = _prodSortCol==='bultos' ? b[1].bultos : _prodSortCol==='unids' ? b[1].unids : _prodSortCol==='count' ? b[1].count : 0;
+    if(_prodSortCol==='nombre') return _prodSortDir==='asc' ? a[1].nombre.localeCompare(b[1].nombre) : b[1].nombre.localeCompare(a[1].nombre);
+    return _prodSortDir==='asc' ? av-bv : bv-av;
+  });
+
+  const arrow = (c) => _prodSortCol===c ? (_prodSortDir==='asc'?'&#8593;':'&#8595;') : '&#8597;';
+  const thStyle = 'padding:10px 12px;cursor:pointer;user-select:none;white-space:nowrap';
+
+  container.innerHTML = '<table class="stbl" style="width:100%">'
+    + '<thead><tr>'
+    + '<th style="' + thStyle + '" onclick="renderProdTable(&quot;nombre&quot;)">Producto ' + arrow('nombre') + '</th>'
+    + '<th style="' + thStyle + '">Pres.</th>'
+    + '<th style="' + thStyle + ';text-align:right" onclick="renderProdTable(&quot;bultos&quot;)">Bultos ' + arrow('bultos') + '</th>'
+    + '<th style="' + thStyle + ';text-align:right" onclick="renderProdTable(&quot;unids&quot;)">Unidades ' + arrow('unids') + '</th>'
+    + '<th style="' + thStyle + ';text-align:right" onclick="renderProdTable(&quot;count&quot;)">Pedidos ' + arrow('count') + '</th>'
+    + '</tr></thead>'
+    + '<tbody>'
+    + data.map(([k,v])=>'<tr>'
+      + '<td style="padding:8px 12px">'+v.nombre+'</td>'
+      + '<td style="padding:8px 12px;color:#888;font-size:12px">'+v.pres+'</td>'
+      + '<td class="num big-num" style="padding:8px 12px;text-align:right">'+v.bultos+'</td>'
+      + '<td class="num" style="padding:8px 12px;text-align:right">'+v.unids+'</td>'
+      + '<td class="num" style="padding:8px 12px;text-align:right">'+v.count+'</td>'
+      + '</tr>').join('')
+    + '</tbody></table>';
 }
 
 function renderResumen(){
