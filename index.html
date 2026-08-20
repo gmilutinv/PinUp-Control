@@ -1573,7 +1573,116 @@ function renderHistorial(){
         </div>
         ` : '<div class="empty">Este cliente no tiene pedidos registrados.</div>'}
       ` : '<div class="empty" style="padding:40px;text-align:center;color:#aaa">Seleccioná un cliente para ver su historial.</div>'}
+    </div>
+
+    ${clienteSeleccionado ? renderEstadoCuenta(clienteSeleccionado, pedidosCliente) : ''}`;
+}
+
+function renderEstadoCuenta(cliente, pedidosCliente){
+  const sinCobrar = pedidosCliente.filter(p=>p.cobro!=='pagado').sort((a,b)=>a.fecha>b.fecha?1:-1);
+  const totalDeuda = sinCobrar.reduce((a,p)=>a+totalMonto(p),0);
+
+  if(!sinCobrar.length) return `
+    <div class="card" style="margin-top:16px">
+      <h2 style="margin-bottom:8px">💳 Estado de Cuenta</h2>
+      <div style="padding:20px;text-align:center;color:var(--green);font-weight:600">✓ Sin deuda pendiente</div>
     </div>`;
+
+  const rows = sinCobrar.map((p,i)=>{
+    const idx = pedidos.indexOf(p)+1;
+    const tm = totalMonto(p);
+    const vence = p.fecha_cobro ? '<span style="color:var(--red);font-size:11px">Vence: '+p.fecha_cobro+'</span>' : '';
+    return '<tr style="border-bottom:1px solid var(--border)">'
+      + '<td style="padding:8px 12px;font-weight:600">P'+idx+'</td>'
+      + '<td style="padding:8px 12px;color:#666">'+p.fecha+'</td>'
+      + '<td style="padding:8px 12px">'+(p.notas||'—')+'<br>'+vence+'</td>'
+      + '<td style="padding:8px 12px;text-align:center">'+totalBultos(p)+'</td>'
+      + '<td style="padding:8px 12px;text-align:right;font-weight:600;color:var(--red)">'+fmt(tm)+'</td>'
+      + '</tr>';
+  }).join('');
+
+  return `
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+        <h2 style="margin:0">💳 Estado de Cuenta — ${cliente}</h2>
+        <button class="btn-sm" style="background:var(--cream);border:1px solid var(--border)" onclick="exportarEstadoCuenta('${cliente.replace(/'/g,"\\'")}')">🖨 Exportar PDF</button>
+      </div>
+      <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+        <div class="stat" style="border-radius:10px;border:1px solid var(--border);padding:14px;flex:1;min-width:150px">
+          <div class="label">Pedidos sin cobrar</div>
+          <div class="value" style="color:var(--red)">${sinCobrar.length}</div>
+        </div>
+        <div class="stat" style="border-radius:10px;border:1px solid var(--border);padding:14px;flex:1;min-width:150px">
+          <div class="label">Total adeudado</div>
+          <div class="value" style="color:var(--red);font-size:20px">${fmt(totalDeuda)}</div>
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:var(--cream)">
+          <th style="padding:8px 12px;text-align:left">N°</th>
+          <th style="padding:8px 12px;text-align:left">Fecha</th>
+          <th style="padding:8px 12px;text-align:left">Notas / Vto.</th>
+          <th style="padding:8px 12px;text-align:center">Bultos</th>
+          <th style="padding:8px 12px;text-align:right">Monto</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr style="background:#fff5f5;font-weight:700">
+          <td colspan="4" style="padding:10px 12px;text-align:right">TOTAL ADEUDADO</td>
+          <td style="padding:10px 12px;text-align:right;color:var(--red);font-size:16px">${fmt(totalDeuda)}</td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+}
+
+function exportarEstadoCuenta(cliente){
+  const pedidosCliente = pedidos.filter(p=>p.cliente===cliente);
+  const sinCobrar = pedidosCliente.filter(p=>p.cobro!=='pagado').sort((a,b)=>a.fecha>b.fecha?1:-1);
+  const totalDeuda = sinCobrar.reduce((a,p)=>a+totalMonto(p),0);
+
+  const rows = sinCobrar.map(p=>{
+    const idx = pedidos.indexOf(p)+1;
+    const prods = (p.productos||[]).map(pr=>{
+      const pp = PRODS.find(x=>x.id===pr.pid); if(!pp) return '';
+      return pp.nombre+' '+pp.pres+' x'+pr.bultos+' bultos';
+    }).filter(Boolean).join(', ');
+    return '<tr>'
+      + '<td style="padding:8px 10px;border:1px solid #ddd;font-weight:600">P'+idx+'</td>'
+      + '<td style="padding:8px 10px;border:1px solid #ddd">'+p.fecha+'</td>'
+      + '<td style="padding:8px 10px;border:1px solid #ddd;font-size:12px;color:#555">'+prods+'</td>'
+      + '<td style="padding:8px 10px;border:1px solid #ddd;text-align:center">'+totalBultos(p)+'</td>'
+      + '<td style="padding:8px 10px;border:1px solid #ddd;text-align:right;font-weight:600;color:#b91c1c">'+fmt(totalMonto(p))+'</td>'
+      + '</tr>';
+  }).join('');
+
+  const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Estado de Cuenta — '+cliente+'</title>'
+    + '<style>body{font-family:Arial,sans-serif;margin:40px;color:#222;font-size:13px}table{border-collapse:collapse;width:100%}@media print{button{display:none}}</style>'
+    + '</head><body>'
+    + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">'
+    + '<div><h1 style="margin:0;color:#b91c1c;font-size:22px">Pin Up Clean</h1>'
+    + '<div style="color:#888;font-size:12px">INAP SRL — Godoy Cruz, Mendoza</div></div>'
+    + '<div style="text-align:right"><div style="font-size:18px;font-weight:700">Estado de Cuenta</div>'
+    + '<div style="color:#888">'+new Date().toLocaleDateString('es-AR')+'</div></div></div>'
+    + '<div style="margin-bottom:20px;padding:14px;background:#fafafa;border-radius:6px;border:1px solid #e5e7eb">'
+    + '<div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Cliente</div>'
+    + '<div style="font-weight:700;font-size:16px">'+cliente+'</div></div>'
+    + '<table><thead><tr>'
+    + '<th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:left">N°</th>'
+    + '<th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:left">Fecha</th>'
+    + '<th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:left">Detalle</th>'
+    + '<th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:center">Bultos</th>'
+    + '<th style="padding:8px 10px;background:#f5f5f5;border:1px solid #ddd;text-align:right">Monto</th>'
+    + '</tr></thead><tbody>'+rows+'</tbody>'
+    + '<tfoot><tr style="background:#fff5f5">'
+    + '<td colspan="4" style="padding:10px;text-align:right;border:1px solid #ddd;font-weight:700">TOTAL ADEUDADO</td>'
+    + '<td style="padding:10px;text-align:right;border:1px solid #ddd;font-size:16px;font-weight:700;color:#b91c1c">'+fmt(totalDeuda)+'</td>'
+    + '</tr></tfoot></table>'
+    + '<div style="margin-top:20px;text-align:center">'
+    + '<button onclick="window.print()" style="padding:10px 24px;background:#b91c1c;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨 Imprimir / Guardar PDF</button>'
+    + '</div></body></html>';
+
+  const win = window.open('','_blank');
+  win.document.write(html);
+  win.document.close();
 }
 
 function renderProyProduccion(){
