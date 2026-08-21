@@ -278,6 +278,7 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
         <select id="e-estado">
           <option value="pendiente">Pendiente</option>
           <option value="produccion">En producción</option>
+          <option value="terminado">Terminado</option>
           <option value="entregado">Entregado</option>
         </select>
       </div>
@@ -662,6 +663,7 @@ function renderNuevo(){
           <select id="f-estado">
             <option value="pendiente">Pendiente</option>
             <option value="produccion">En producción</option>
+            <option value="terminado">Terminado</option>
             <option value="entregado">Entregado</option>
           </select>
         </div>
@@ -824,8 +826,8 @@ function renderPedidos(){
   if(!pedidosFiltrados.length){list.innerHTML='<div class="empty">No hay pedidos para esta provincia.</div>';return;}
   list.innerHTML=pedidosFiltrados.map((p,idx)=>{
     const tb=totalBultos(p),tm=totalMonto(p);
-    const bc=p.estado==='entregado'?'badge-entregado':p.estado==='produccion'?'badge-produccion':'badge-pendiente';
-    const bt=p.estado==='entregado'?'Entregado':p.estado==='produccion'?'En producción':'Pendiente';
+    const bc=p.estado==='entregado'?'badge-entregado':p.estado==='produccion'?'badge-produccion':p.estado==='terminado'?'badge-entregado':'badge-pendiente';
+    const bt=p.estado==='entregado'?'Entregado':p.estado==='produccion'?'En producción':p.estado==='terminado'?'Terminado':'Pendiente';
     const rows=(p.productos||[]).map(pr=>{
       const pp=getProd(pr.pid);if(!pp)return'';
       const precio=pr.precio||getPrecioUnidad(p.cliente,pr.pid);
@@ -926,6 +928,7 @@ function renderPedidos(){
           ${canEdit||currentProfile.rol==='produccion'?`<select onchange="cambiarEstado(${p.id},this.value)">
             <option value="pendiente" ${p.estado==='pendiente'?'selected':''}>Pendiente</option>
             <option value="produccion" ${p.estado==='produccion'?'selected':''}>En producción</option>
+            <option value="terminado" ${p.estado==='terminado'?'selected':''}>Terminado</option>
             <option value="entregado" ${p.estado==='entregado'?'selected':''}>Entregado</option>
           </select>`:''}
           ${canEdit?`<button class="btn-sm ${p.cobro==='pagado'?'btn-danger':'btn-success'}" onclick="toggleCobro(${p.id})">${p.cobro==='pagado'?'Marcar sin cobrar':'✓ Marcar cobrado'}</button>`:''}
