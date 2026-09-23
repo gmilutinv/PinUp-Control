@@ -264,6 +264,7 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
     <div id="tab-stock" style="display:none"></div>
     <div id="tab-proyprod" style="display:none"></div>
     <div id="tab-historial" style="display:none"></div>
+    <div id="tab-statsucursal" style="display:none"></div>
   </div>
 </div>
 
@@ -586,6 +587,7 @@ function buildTabs(){
     {id:'stock',label:'📦 Stock',roles:['admin']},
     {id:'proyprod',label:'🏭 Proy. Producción',roles:['admin','produccion']},
     {id:'historial',label:'📋 Historial',roles:['admin','produccion']},
+    {id:'statsucursal',label:'🏪 Stats Sucursal',roles:['admin']},
   ];
   const visible=tabs.filter(t=>t.roles.includes(rol));
   document.getElementById('main-tabs').innerHTML=visible.map((t,i)=>`
@@ -594,7 +596,7 @@ function buildTabs(){
 }
 
 function showTab(t){
-  ['nuevo','pedidos','muestras','cobros','estadisticas','resumen','proyeccion','admin','stock','proyprod','historial'].forEach(tab=>{
+  ['nuevo','pedidos','muestras','cobros','estadisticas','resumen','proyeccion','admin','stock','proyprod','historial','statsucursal'].forEach(tab=>{
     const el=document.getElementById('tab-'+tab);
     if(el)el.style.display=tab===t?'block':'none';
   });
@@ -611,6 +613,7 @@ function showTab(t){
   if(t==='stock')renderStock();
   if(t==='proyprod')renderProyProduccion();
   if(t==='historial')renderHistorial();
+  if(t==='statsucursal')renderStatsSucursal();
   if(t==='nuevo')renderNuevo();
 }
 
@@ -1693,6 +1696,162 @@ function exportarEstadoCuenta(cliente){
   const win = window.open('','_blank');
   win.document.write(html);
   win.document.close();
+}
+
+
+function renderStatsSucursal(){
+  const tab = document.getElementById('tab-statsucursal');
+  if(currentProfile.rol!=='admin'){ tab.innerHTML='<div class="empty">Sin acceso.</div>'; return; }
+
+  const clienteEl = document.getElementById('ss-cliente');
+  const sucursalEl = document.getElementById('ss-sucursal');
+  const clienteSel = clienteEl ? clienteEl.value : '';
+  const sucursalSel = sucursalEl ? sucursalEl.value : '';
+
+  // All clients that have at least one pedido with sucursal
+  const clientes = [...new Set(pedidos.filter(p=>p.sucursal).map(p=>p.cliente).filter(Boolean))].sort();
+
+  // Sucursales for selected client
+  const sucursales = clienteSel
+    ? [...new Set(pedidos.filter(p=>p.cliente===clienteSel && p.sucursal).map(p=>p.sucursal))].sort()
+    : [];
+
+  // Pedidos for selected client + sucursal
+  const pedidosFilt = (clienteSel && sucursalSel)
+    ? pedidos.filter(p=>p.cliente===clienteSel && p.sucursal===sucursalSel)
+    : [];
+
+  // Group by month
+  const mesesMap = {};
+  pedidosFilt.forEach(p=>{
+    if(!p.fecha) return;
+    const key = p.fecha.substring(0,7);
+    const [y,m] = key.split('-').map(Number);
+    const label = new Date(y,m-1,1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+    if(!mesesMap[key]) mesesMap[key] = {label, bultos:0, pedidos:0, prods:{}};
+    mesesMap[key].bultos += totalBultos(p);
+    mesesMap[key].pedidos++;
+    (p.productos||[]).forEach(pr=>{
+      const pp = PRODS.find(x=>x.id===pr.pid); if(!pp) return;
+      const k = pr.pid+'_'+pp.pres;
+      if(!mesesMap[key].prods[k]) mesesMap[key].prods[k] = {nombre:pp.nombre, pres:pp.pres, bultos:0, unidades:0};
+      mesesMap[key].prods[k].bultos += pr.bultos||0;
+      mesesMap[key].prods[k].unidades += (pr.bultos||0)*pp.uxb;
+    });
+  });
+
+  const meses = Object.keys(mesesMap).sort();
+  const totalBultosAcum = meses.reduce((a,k)=>a+mesesMap[k].bultos,0);
+  const totalPedidosAcum = meses.reduce((a,k)=>a+mesesMap[k].pedidos,0);
+
+  // Totals per product
+  const totalPorProd = {};
+  pedidosFilt.forEach(p=>{
+    (p.productos||[]).forEach(pr=>{
+      const pp = PRODS.find(x=>x.id===pr.pid); if(!pp) return;
+      const k = pr.pid+'_'+pp.pres;
+      if(!totalPorProd[k]) totalPorProd[k] = {nombre:pp.nombre, pres:pp.pres, bultos:0, unidades:0};
+      totalPorProd[k].bultos += pr.bultos||0;
+      totalPorProd[k].unidades += (pr.bultos||0)*pp.uxb;
+    });
+  });
+
+  const mesSections = meses.map(k=>{
+    const prods = Object.values(mesesMap[k].prods).filter(v=>v.bultos>0);
+    const prodRows = prods.map(v=>
+      '<tr style="border-bottom:1px solid var(--border)">'
+      +'<td style="padding:7px 12px;padding-left:24px;color:#555">'+v.nombre+'</td>'
+      +'<td style="padding:7px 12px;color:#888;font-size:12px">'+v.pres+'</td>'
+      +'<td style="padding:7px 12px;text-align:center;font-weight:600">'+v.bultos+'</td>'
+      +'<td style="padding:7px 12px;text-align:center;color:#666">'+v.unidades+'</td>'
+      +'</tr>').join('');
+    return '<tr style="background:var(--cream)">'
+      +'<td style="padding:9px 12px;font-weight:700;text-transform:capitalize" colspan="2">'+mesesMap[k].label+'</td>'
+      +'<td style="padding:9px 12px;text-align:center;font-weight:700">'+mesesMap[k].bultos+'</td>'
+      +'<td style="padding:9px 12px;text-align:center;color:#888;font-size:12px">'+mesesMap[k].pedidos+' pedido'+(mesesMap[k].pedidos!==1?'s':'')+'</td>'
+      +'</tr>'+prodRows;
+  }).join('');
+
+  const totalRows = Object.values(totalPorProd).filter(v=>v.bultos>0).map(v=>
+    '<tr style="border-bottom:1px solid var(--border)">'
+    +'<td style="padding:8px 12px;padding-left:24px;color:#555">'+v.nombre+'</td>'
+    +'<td style="padding:8px 12px;color:#888;font-size:12px">'+v.pres+'</td>'
+    +'<td style="padding:8px 12px;text-align:center;font-weight:600">'+v.bultos+'</td>'
+    +'<td style="padding:8px 12px;text-align:center;color:#666">'+v.unidades+'</td>'
+    +'</tr>').join('');
+
+  tab.innerHTML = `
+    <div class="card">
+      <h2 style="margin-bottom:16px">🏪 Estadísticas por Sucursal</h2>
+
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
+        <div>
+          <label style="font-size:11px;color:#888;font-weight:600;display:block;margin-bottom:4px">CLIENTE</label>
+          <select id="ss-cliente" onchange="renderStatsSucursal()"
+            style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;min-width:200px">
+            <option value="">Seleccioná un cliente...</option>
+            ${clientes.map(c=>'<option value="'+c+'" '+(c===clienteSel?'selected':'')+'>'+c+'</option>').join('')}
+          </select>
+        </div>
+        ${clienteSel ? `<div>
+          <label style="font-size:11px;color:#888;font-weight:600;display:block;margin-bottom:4px">SUCURSAL</label>
+          <select id="ss-sucursal" onchange="renderStatsSucursal()"
+            style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;min-width:200px">
+            <option value="">Todas las sucursales</option>
+            ${sucursales.map(s=>'<option value="'+s+'" '+(s===sucursalSel?'selected':'')+'>'+s+'</option>').join('')}
+          </select>
+        </div>` : ''}
+      </div>
+
+      ${clienteSel && sucursalSel && meses.length ? `
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px">
+          <div class="stat" style="border-radius:10px;border:1px solid var(--border);padding:16px">
+            <div class="label">Total pedidos</div><div class="value">${totalPedidosAcum}</div>
+          </div>
+          <div class="stat" style="border-radius:10px;border:1px solid var(--border);padding:16px">
+            <div class="label">Total bultos</div><div class="value">${totalBultosAcum}</div>
+          </div>
+        </div>
+        <div style="margin-bottom:24px">
+          <h3 style="font-size:14px;font-weight:700;margin-bottom:10px">Detalle por mes</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:var(--cream)">
+              <th style="padding:9px 12px;text-align:left">Producto</th>
+              <th style="padding:9px 12px;text-align:left">Pres.</th>
+              <th style="padding:9px 12px;text-align:center">Bultos</th>
+              <th style="padding:9px 12px;text-align:center">Unidades / Pedidos</th>
+            </tr></thead>
+            <tbody>${mesSections}</tbody>
+          </table>
+        </div>
+        <div>
+          <h3 style="font-size:14px;font-weight:700;margin-bottom:10px">Total acumulado por producto</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:var(--cream)">
+              <th style="padding:9px 12px;text-align:left">Producto</th>
+              <th style="padding:9px 12px;text-align:left">Pres.</th>
+              <th style="padding:9px 12px;text-align:center">Bultos</th>
+              <th style="padding:9px 12px;text-align:center">Unidades</th>
+            </tr></thead>
+            <tbody>${totalRows}</tbody>
+            <tfoot><tr style="background:var(--cream);font-weight:700">
+              <td colspan="2" style="padding:9px 12px">TOTAL</td>
+              <td style="padding:9px 12px;text-align:center">${totalBultosAcum}</td>
+              <td></td>
+            </tr></tfoot>
+          </table>
+        </div>
+      ` : clienteSel && !sucursalSel ? `
+        <div style="padding:20px;color:#888;font-size:13px">
+          Sucursales encontradas para <strong>${clienteSel}</strong>: 
+          ${sucursales.length ? sucursales.map(s=>'<span style="padding:3px 8px;background:var(--cream);border-radius:4px;margin:2px;display:inline-block">'+s+'</span>').join(' ') : 'ninguna con sucursal asignada'}
+        </div>
+      ` : !clienteSel ? `
+        <div style="padding:40px;text-align:center;color:#aaa">Seleccioná un cliente para ver sus sucursales.</div>
+      ` : `
+        <div class="empty">No hay pedidos para esta sucursal todavía.</div>
+      `}
+    </div>`;
 }
 
 function renderProyProduccion(){
