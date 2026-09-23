@@ -292,6 +292,7 @@ header h1{font-family:Georgia,serif;font-size:22px;letter-spacing:2px}
       </div>
       <div class="field"><label>Fecha cobro</label><input type="date" id="e-fechacobro"></div>
       <div class="field"><label>Notas</label><input type="text" id="e-notas"></div>
+        <div class="field"><label>Sucursal</label><input type="text" id="e-sucursal" placeholder="Ej: Carrefour Godoy Cruz, Sucursal 142"></div>
     </div>
     <div style="overflow-x:auto">
       <table class="ptbl">
@@ -678,6 +679,7 @@ function renderNuevo(){
       <div class="form-row">
         <div class="field"><label>Dirección de entrega</label><input type="text" id="f-direccion" placeholder="Ej: Av. San Martín 1234, Mendoza"></div>
         <div class="field"><label>Contacto de entrega</label><input type="text" id="f-contacto" placeholder="Ej: Juan Pérez / 261-555-1234"></div>
+        <div class="field"><label>Sucursal</label><input type="text" id="f-sucursal" placeholder="Ej: Carrefour Godoy Cruz, Sucursal 142"></div>
       </div>
       <div class="form-row">
         <div class="field"><label>Provincia</label>
@@ -806,6 +808,7 @@ async function guardar(){
       notas:document.getElementById('f-notas').value,
       direccion_entrega:document.getElementById('f-direccion').value||null,
       contacto_entrega:document.getElementById('f-contacto').value||null,
+      sucursal:document.getElementById('f-sucursal').value||null,
       con_iva:document.getElementById('f-iva').checked,
       productos:prods,
       created_by:currentUser.id
@@ -918,9 +921,10 @@ function renderPedidos(){
                  </label>`}
             <span id="remito-status-${p.id}" style="font-size:11px;color:var(--green)"></span>
           </div>
-          ${p.direccion_entrega || p.contacto_entrega ? `
+          ${p.sucursal || p.direccion_entrega || p.contacto_entrega ? `
           <div style="margin-top:6px;padding:8px 10px;background:#f9f9f9;border-radius:6px;border:1px solid var(--border)">
-            ${p.direccion_entrega ? `<div style="font-size:11px;color:#555">📍 <strong>Dirección:</strong> ${p.direccion_entrega}</div>` : ''}
+            ${p.sucursal ? `<div style="font-size:11px;color:#555">🏪 <strong>Sucursal:</strong> ${p.sucursal}</div>` : ''}
+            ${p.direccion_entrega ? `<div style="font-size:11px;color:#555;margin-top:2px">📍 <strong>Dirección:</strong> ${p.direccion_entrega}</div>` : ''}
             ${p.contacto_entrega ? `<div style="font-size:11px;color:#555;margin-top:2px">👤 <strong>Contacto:</strong> ${p.contacto_entrega}</div>` : ''}
           </div>` : ''}
         </div>`:''}
@@ -986,6 +990,7 @@ function exportarPDF(pedidoId, conPrecios){
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;padding:14px;background:#fafafa;border-radius:6px;border:1px solid #e5e7eb">
     <div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Cliente</div><div style="font-weight:700;font-size:15px">${p.cliente}</div></div>
     <div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Provincia</div><div>${p.provincia||'—'}</div></div>
+    ${p.sucursal?`<div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Sucursal</div><div>${p.sucursal}</div></div>`:''}
     ${p.direccion_entrega?`<div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Dirección entrega</div><div>${p.direccion_entrega}</div></div>`:''}
     ${p.contacto_entrega?`<div><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Contacto</div><div>${p.contacto_entrega}</div></div>`:''}
     ${p.notas?`<div style="grid-column:1/-1"><div style="font-size:11px;text-transform:uppercase;color:#888;font-weight:600">Notas</div><div>${p.notas}</div></div>`:''}
@@ -1125,6 +1130,7 @@ function abrirEdicion(id){
   document.getElementById('e-cobro').value=p.cobro;
   document.getElementById('e-fechacobro').value=p.fecha_cobro||'';
   document.getElementById('e-notas').value=p.notas||'';
+  document.getElementById('e-sucursal').value=p.sucursal||'';
   document.getElementById('e-prod-body').innerHTML=PRODS.map(pp=>{
     const ex=(p.productos||[]).find(x=>x.pid===pp.id);
     const b=ex?ex.bultos:0,bon=ex?ex.bonificado||false:false,pr=ex?ex.precio||0:0;
@@ -1157,6 +1163,7 @@ async function guardarEdicion(){
     cobro:document.getElementById('e-cobro').value,
     fecha_cobro:document.getElementById('e-fechacobro').value||null,
     notas:document.getElementById('e-notas').value,
+    sucursal:document.getElementById('e-sucursal').value||null,
     productos:prods
   };
   await supa(`/rest/v1/pedidos?id=eq.${editingId}`,'PATCH',update);
@@ -2312,6 +2319,7 @@ function renderMuestras(){
       </div>
     </div>
     <div class="form-row">
+      <div class="field"><label>Sucursal</label><input type="text" id="mf-sucursal" placeholder="Ej: Carrefour Godoy Cruz, Sucursal 142"></div>
       <div class="field"><label>Dirección de entrega</label><input type="text" id="mf-direccion" placeholder="Ej: Av. San Martín 1234, Mendoza"></div>
       <div class="field"><label>Contacto</label><input type="text" id="mf-contacto" placeholder="Ej: Juan Pérez / 261-555-1234"></div>
       <div class="field"><label>Notas</label><input type="text" id="mf-notas" placeholder="Ej: para visita comercial del 25/06"></div>
@@ -2409,6 +2417,7 @@ async function guardarMuestra(){
   const estado=document.getElementById('mf-estado').value;
   const provincia=document.getElementById('mf-provincia').value;
   const notas=document.getElementById('mf-notas').value;
+  const sucursal=document.getElementById('mf-sucursal').value;
   const direccion_entrega=document.getElementById('mf-direccion').value;
   const contacto_entrega=document.getElementById('mf-contacto').value;
   const productos=PRODS.map(pp=>({pid:pp.id,bultos:parseInt(document.getElementById('mb-'+pp.id).value)||0})).filter(x=>x.bultos>0);
