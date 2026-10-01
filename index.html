@@ -10,6 +10,30 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+function _printHTML(html){
+  var old = document.getElementById('_pdf_iframe');
+  if(old) old.remove();
+  var iframe = document.createElement('iframe');
+  iframe.id = '_pdf_iframe';
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none';
+  document.body.appendChild(iframe);
+  var doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+  iframe.onload = function(){
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch(e) {
+      var blob = new Blob([html], {type:'text/html'});
+      var url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 30000);
+    }
+    setTimeout(function(){ if(iframe.parentNode) iframe.remove(); }, 60000);
+  };
+}
+</script>
 <style>
 :root {
   --red:#D32F2F;--cream:#FFF8F0;--dark:#1A1A1A;--light:#F5EDE0;
@@ -1014,12 +1038,7 @@ function exportarPDF(pedidoId, conPrecios){
     <button onclick="window.print()" style="padding:10px 24px;background:#b91c1c;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨 Imprimir / Guardar PDF</button>
   </div>
   </body></html>`;
-  const blob = new Blob([html], {type:'text/html'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.target = '_blank'; document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+  _printHTML(html);
 }
 
 function tog(id){
@@ -1693,12 +1712,7 @@ function exportarEstadoCuenta(cliente){
     + '<button onclick="window.print()" style="padding:10px 24px;background:#b91c1c;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨 Imprimir / Guardar PDF</button>'
     + '</div></body></html>';
 
-  const blob = new Blob([html], {type:'text/html'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.target = '_blank'; document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+  _printHTML(html);
 }
 
 function renderProyProduccion(){
@@ -1946,12 +1960,7 @@ function exportarProyPDF(){
   </div>
   </body></html>`;
 
-  const blob = new Blob([html], {type:'text/html'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.target = '_blank'; document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+  _printHTML(html);
 }
 
 function seleccionarTodosMeses(){
@@ -2604,12 +2613,7 @@ function exportarPDFMuestra(muestraId){
     <button onclick="window.print()" style="padding:10px 24px;background:#6A1B9A;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨 Imprimir / Guardar PDF</button>
   </div>
   </body></html>`;
-  const blob = new Blob([html], {type:'text/html'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.target = '_blank'; document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+  _printHTML(html);
 }
 
 
