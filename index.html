@@ -20,7 +20,8 @@ function _printHTML(html){
   document.body.appendChild(iframe);
   var doc = iframe.contentDocument || iframe.contentWindow.document;
   doc.open(); doc.write(html); doc.close();
-  iframe.onload = function(){
+  // Timeout en lugar de onload — onload no siempre dispara con doc.write() en Safari
+  setTimeout(function(){
     try {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
@@ -30,8 +31,8 @@ function _printHTML(html){
       window.open(url, '_blank');
       setTimeout(function(){ URL.revokeObjectURL(url); }, 30000);
     }
-    setTimeout(function(){ if(iframe.parentNode) iframe.remove(); }, 60000);
-  };
+    setTimeout(function(){ if(iframe && iframe.parentNode) iframe.remove(); }, 60000);
+  }, 600);
 }
 </script>
 <style>
@@ -1057,8 +1058,11 @@ async function toggleIva(id){
 }
 
 async function cambiarEstado(id,v){
-  await supa(`/rest/v1/pedidos?id=eq.${id}`,'PATCH',{estado:v});
+  const res=await supa(`/rest/v1/pedidos?id=eq.${id}`,'PATCH',{estado:v});
+  // Actualizar array local inmediatamente
   const p=pedidos.find(x=>x.id===id);if(p)p.estado=v;
+  // Re-render para reflejar el cambio visualmente
+  renderPedidos();
 }
 
 async function toggleCobro(id){
@@ -1275,7 +1279,28 @@ function renderStats(){
     </div>
     <div class="card"><h2>Totales por producto</h2>
       <div id="stats-prod-table"></div>
-    </div>`;
+    </div>
+    ${currentProfile.rol==='admin'?(()=>{
+      // Sucursales: agrupar pedidos que tienen sucursal
+      const sucMap={};
+      pedsFilt.filter(p=>p.sucursal).forEach(p=>{
+        const s=p.sucursal;
+        if(!sucMap[s])sucMap[s]={cliente:p.cliente,sucursal:s,pedidos:0,bultos:0,monto:0};
+        sucMap[s].pedidos++;sucMap[s].bultos+=totalBultos(p);sucMap[s].monto+=totalMonto(p);
+      });
+      const sucRows=Object.values(sucMap).sort((a,b)=>b.bultos-a.bultos);
+      if(!sucRows.length) return '';
+      return `<div class="card" style="margin-top:16px"><h2>Ventas por sucursal</h2>
+        <table class="stbl"><thead><tr><th>Cliente</th><th>Sucursal</th><th style="text-align:right">Pedidos</th><th style="text-align:right">Bultos</th><th style="text-align:right">Total $</th></tr></thead>
+        <tbody>${sucRows.map(s=>`<tr>
+          <td style="font-weight:600">${s.cliente}</td>
+          <td>🏪 ${s.sucursal}</td>
+          <td class="num" style="text-align:right">${s.pedidos}</td>
+          <td class="num big-num" style="text-align:right">${s.bultos}</td>
+          <td class="num" style="text-align:right">${fmt(s.monto)}</td>
+        </tr>`).join('')}</tbody></table>
+      </div>`;
+    })():''}`;
 
   window._statsSorted = sorted;
   renderProdTable('bultos','desc');
